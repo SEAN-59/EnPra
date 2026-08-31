@@ -1,149 +1,187 @@
 import { serve } from '@hono/node-server';
-import argon2 from 'argon2';
-import Database from 'better-sqlite3';
-import { Hono } from 'hono';
-import { cors } from 'hono/cors';
-import { SignJWT, jwtVerify } from 'jose';
+import { timingSafeEqual } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { Hono } from 'hono';
+import { cors } from 'hono/cors';
+import { Pool } from 'pg';
+
 import { CodexRegistry } from './codex.js';
+
+type UserContext = { id: string; displayName: string };
+type Variables = { user: UserContext };
 
 const port = Number(process.env.PORT ?? 8787);
 const dataDir = process.env.ENPRA_DATA_DIR ?? join(process.cwd(), '.enpra-data');
+const databaseUrl = process.env.DATABASE_URL;
+const serviceToken = process.env.ENPRA_BRIDGE_SERVICE_TOKEN;
 const corsOrigins = (process.env.ENPRA_CORS_ORIGIN ?? 'http://localhost:3000')
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);
-const sessionSecret = process.env.ENPRA_SESSION_SECRET ?? 'change-this-before-public-use';
-if (process.env.NODE_ENV === 'production' && sessionSecret === 'change-this-before-public-use') throw new Error('Set ENPRA_SESSION_SECRET before public use.');
+
+if (!databaseUrl) throw new Error('Set DATABASE_URL before starting the EnPra bridge.');
+if (!serviceToken || serviceToken.length < 32) throw new Error('Set a long ENPRA_BRIDGE_SERVICE_TOKEN before starting the EnPra bridge.');
 
 mkdirSync(dataDir, { recursive: true });
-const db = new Database(join(dataDir, 'enpra.sqlite'));
-db.pragma('journal_mode = WAL');
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    email TEXT NOT NULL UNIQUE,
-    username TEXT NOT NULL UNIQUE,
-    password_hash TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS connections (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    provider TEXT NOT NULL CHECK(provider = 'openai_codex'),
-    status TEXT NOT NULL CHECK(status IN ('pending', 'active', 'disconnected', 'error')),
-    credential_ref TEXT NOT NULL,
-    connected_at TEXT,
-    last_verified_at TEXT,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    UNIQUE (user_id, provider)
-  );
-`);
 
-type UserRow = { id: string; name: string; email: string; username: string; password_hash: string };
-type UserSession = { sub: string };
-const key = new TextEncoder().encode(sessionSecret);
+const pool = new Pool({ connectionString: databaseUrl });
 const codex = new CodexRegistry(dataDir);
+const expectedServiceToken = Buffer.from(serviceToken);
 
-function cleanEmail(value: string) { return value.trim().toLowerCase(); }
-function cleanUsername(value: string) { return value.trim().toLowerCase(); }
-function now() { return new Date().toISOString(); }
-function userView(user: UserRow) { return { id: user.id, name: user.name, email: user.email, username: user.username }; }
-
-async function createSession(userId: string) {
-  return new SignJWT({}).setProtectedHeader({ alg: 'HS256' }).setSubject(userId).setIssuedAt().setExpirationTime('30d').sign(key);
+function isExpectedToken(value: string | undefined) {
+  if (!value) return false;
+  const received = Buffer.from(value);
+  return received.length === expectedServiceToken.length && timingSafeEqual(received, expectedServiceToken);
 }
 
-async function readSession(header?: string): Promise<UserSession | null> {
-  if (!header?.startsWith('Bearer ')) return null;
-  try {
-    const { payload } = await jwtVerify(header.slice(7), key);
-    return payload.sub ? { sub: payload.sub } : null;
-  } catch { return null; }
+async function initializeDatabase() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      display_name TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS connections (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      provider TEXT NOT NULL CHECK (provider = 'openai_codex'),
+      status TEXT NOT NULL CHECK (status IN ('pending', 'active', 'disconnected', 'error')),
+      credential_ref TEXT NOT NULL,
+      plan_type TEXT,
+      connected_at TIMESTAMPTZ,
+      last_verified_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (user_id, provider)
+    );
+  `);
 }
 
-const app = new Hono();
-app.use('*', cors({ origin: corsOrigins, allowHeaders: ['Authorization', 'Content-Type'], allowMethods: ['GET', 'POST', 'OPTIONS'] }));
-app.get('/health', (c) => c.json({ ok: true }));
+async function upsertUser(user: UserContext) {
+  await pool.query(
+    `INSERT INTO users (id, display_name)
+     VALUES ($1, $2)
+     ON CONFLICT (id) DO UPDATE
+     SET display_name = EXCLUDED.display_name, updated_at = NOW()`,
+    [user.id, user.displayName],
+  );
+}
 
-app.post('/auth/register', async (c) => {
-  const body = await c.req.json<{ name?: string; email?: string; username?: string; password?: string }>();
-  const name = body.name?.trim() ?? '';
-  const email = cleanEmail(body.email ?? '');
-  const username = cleanUsername(body.username ?? '');
-  const password = body.password ?? '';
-  if (!name || !/^\S+@\S+\.\S+$/.test(email) || !/^[a-z0-9_]{3,24}$/.test(username) || password.length < 8) {
-    return c.json({ error: '이름, 올바른 이메일, 3~24자 영문·숫자 아이디, 8자 이상 비밀번호가 필요합니다.' }, 400);
+async function markConnection(userId: string, status: 'pending' | 'active' | 'disconnected' | 'error', planType?: string | null) {
+  const connectionId = `codex:${userId}`;
+  await pool.query(
+    `INSERT INTO connections (id, user_id, provider, status, credential_ref, plan_type, connected_at, last_verified_at)
+     VALUES ($1, $2, 'openai_codex', $3, $4, $5,
+       CASE WHEN $3 = 'active' THEN NOW() ELSE NULL END,
+       CASE WHEN $3 = 'active' THEN NOW() ELSE NULL END)
+     ON CONFLICT (user_id, provider) DO UPDATE
+     SET status = EXCLUDED.status,
+         plan_type = COALESCE(EXCLUDED.plan_type, connections.plan_type),
+         connected_at = CASE WHEN EXCLUDED.status = 'active' THEN COALESCE(connections.connected_at, NOW()) ELSE connections.connected_at END,
+         last_verified_at = CASE WHEN EXCLUDED.status = 'active' THEN NOW() ELSE connections.last_verified_at END,
+         updated_at = NOW()`,
+    [connectionId, userId, status, `codex/${userId}`, planType ?? null],
+  );
+}
+
+const app = new Hono<{ Variables: Variables }>();
+
+app.use('*', cors({
+  origin: (origin) => (!origin || corsOrigins.includes(origin) ? origin ?? corsOrigins[0] : null),
+  allowHeaders: ['Authorization', 'Content-Type', 'X-EnPra-Service-Token', 'X-EnPra-User-Id', 'X-EnPra-User-Name'],
+  allowMethods: ['GET', 'POST', 'OPTIONS'],
+}));
+
+app.get('/health', async (c) => {
+  await pool.query('SELECT 1');
+  return c.json({ ok: true, database: 'connected' });
+});
+
+app.use('/api/*', async (c, next) => {
+  if (!isExpectedToken(c.req.header('X-EnPra-Service-Token'))) return c.json({ error: 'Unauthorized bridge request.' }, 401);
+
+  const id = c.req.header('X-EnPra-User-Id')?.trim();
+  const displayName = c.req.header('X-EnPra-User-Name')?.trim();
+  if (!id || id.length > 256 || !displayName || displayName.length > 256) {
+    return c.json({ error: 'A trusted EnPra user identity is required.' }, 400);
   }
-  const existing = db.prepare('SELECT id FROM users WHERE email = ? OR username = ?').get(email, username);
-  if (existing) return c.json({ error: '이미 사용 중인 이메일 또는 아이디입니다.' }, 409);
-  const id = randomUUID();
-  const timestamp = now();
-  const passwordHash = await argon2.hash(password, { type: argon2.argon2id });
-  db.prepare('INSERT INTO users (id, name, email, username, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(id, name, email, username, passwordHash, timestamp, timestamp);
-  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(id) as UserRow;
-  return c.json({ user: userView(user), session: await createSession(id) }, 201);
+
+  const user = { id, displayName };
+  await upsertUser(user);
+  c.set('user', user);
+  await next();
 });
 
-app.post('/auth/login', async (c) => {
-  const body = await c.req.json<{ identifier?: string; password?: string }>();
-  const identifier = (body.identifier ?? '').trim().toLowerCase();
-  const user = db.prepare('SELECT * FROM users WHERE email = ? OR username = ?').get(identifier, identifier) as UserRow | undefined;
-  if (!user || !(await argon2.verify(user.password_hash, body.password ?? ''))) return c.json({ error: '아이디 또는 비밀번호가 올바르지 않습니다.' }, 401);
-  return c.json({ user: userView(user), session: await createSession(user.id) });
+app.get('/api/me', async (c) => {
+  const user = c.get('user');
+  const result = await pool.query(
+    `SELECT status, plan_type, connected_at, last_verified_at
+     FROM connections
+     WHERE user_id = $1 AND provider = 'openai_codex'`,
+    [user.id],
+  );
+  return c.json({ user, connection: result.rows[0] ?? null });
 });
 
-app.get('/me', async (c) => {
-  const session = await readSession(c.req.header('Authorization'));
-  if (!session) return c.json({ error: '로그인이 필요합니다.' }, 401);
-  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(session.sub) as UserRow | undefined;
-  if (!user) return c.json({ error: '사용자를 찾을 수 없습니다.' }, 401);
-  return c.json({ user: userView(user) });
-});
+app.post('/api/connections/codex/start', async (c) => {
+  const user = c.get('user');
+  await markConnection(user.id, 'pending');
 
-app.post('/connections/codex/start', async (c) => {
-  const session = await readSession(c.req.header('Authorization'));
-  if (!session) return c.json({ error: '로그인이 필요합니다.' }, 401);
-  const credentialRef = `codex/${session.sub}`;
-  const connection = db.prepare('SELECT id FROM connections WHERE user_id = ? AND provider = ?').get(session.sub, 'openai_codex') as { id: string } | undefined;
-  if (!connection) db.prepare('INSERT INTO connections (id, user_id, provider, status, credential_ref) VALUES (?, ?, ?, ?, ?)').run(randomUUID(), session.sub, 'openai_codex', 'pending', credentialRef);
-  else db.prepare('UPDATE connections SET status = ? WHERE id = ?').run('pending', connection.id);
   try {
-    const login = await codex.get(session.sub).startDeviceLogin();
-    return c.json(login);
+    return c.json(await codex.get(user.id).startDeviceLogin());
   } catch (error) {
-    db.prepare('UPDATE connections SET status = ? WHERE user_id = ? AND provider = ?').run('error', session.sub, 'openai_codex');
+    await markConnection(user.id, 'error');
     return c.json({ error: error instanceof Error ? error.message : 'Codex 로그인 시작에 실패했습니다.' }, 502);
   }
 });
 
-app.get('/connections/codex', async (c) => {
-  const session = await readSession(c.req.header('Authorization'));
-  if (!session) return c.json({ error: '로그인이 필요합니다.' }, 401);
-  const connection = db.prepare('SELECT id, status, connected_at, last_verified_at FROM connections WHERE user_id = ? AND provider = ?').get(session.sub, 'openai_codex') as { id: string; status: string; connected_at: string | null; last_verified_at: string | null } | undefined;
-  if (!connection) return c.json({ connection: null });
+app.get('/api/connections/codex', async (c) => {
+  const user = c.get('user');
+  const current = await pool.query(
+    `SELECT status, plan_type, connected_at, last_verified_at
+     FROM connections
+     WHERE user_id = $1 AND provider = 'openai_codex'`,
+    [user.id],
+  );
+  if (!current.rows[0]) return c.json({ connection: null });
+
   try {
-    const account = await codex.get(session.sub).readAccount();
+    const account = await codex.get(user.id).readAccount();
     if (account?.type === 'chatgpt') {
-      const timestamp = now();
-      db.prepare('UPDATE connections SET status = ?, connected_at = COALESCE(connected_at, ?), last_verified_at = ? WHERE id = ?').run('active', timestamp, timestamp, connection.id);
-      return c.json({ connection: { ...connection, status: 'active', account: { planType: account.planType ?? null } } });
+      await markConnection(user.id, 'active', account.planType);
+      const refreshed = await pool.query(
+        `SELECT status, plan_type, connected_at, last_verified_at
+         FROM connections
+         WHERE user_id = $1 AND provider = 'openai_codex'`,
+        [user.id],
+      );
+      return c.json({ connection: refreshed.rows[0] });
     }
-  } catch { /* pending logins can legitimately have no account yet */ }
-  return c.json({ connection: { ...connection, account: null } });
+  } catch {
+    // A device login can remain pending until the user completes it in ChatGPT.
+  }
+
+  return c.json({ connection: current.rows[0] });
 });
 
-app.post('/connections/codex/disconnect', async (c) => {
-  const session = await readSession(c.req.header('Authorization'));
-  if (!session) return c.json({ error: '로그인이 필요합니다.' }, 401);
-  try { await codex.get(session.sub).logout(); } catch { /* a missing local session is already disconnected */ }
-  db.prepare('UPDATE connections SET status = ?, last_verified_at = ? WHERE user_id = ? AND provider = ?').run('disconnected', now(), session.sub, 'openai_codex');
+app.post('/api/connections/codex/disconnect', async (c) => {
+  const user = c.get('user');
+  try {
+    await codex.get(user.id).logout();
+  } catch {
+    // Missing local credentials are already effectively disconnected.
+  }
+  await markConnection(user.id, 'disconnected');
   return c.body(null, 204);
 });
 
-serve({ fetch: app.fetch, port, hostname: '0.0.0.0' });
-console.log(`EnPra bridge listening on ${port}`);
+initializeDatabase()
+  .then(() => serve({ fetch: app.fetch, port, hostname: '0.0.0.0' }))
+  .then(() => console.log(`EnPra bridge listening on ${port}`))
+  .catch((error) => {
+    console.error('EnPra bridge failed to initialize.', error);
+    process.exit(1);
+  });
