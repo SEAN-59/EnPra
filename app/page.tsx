@@ -23,7 +23,7 @@ export default async function Home() {
             <span className="grid size-10 place-items-center rounded-xl bg-[#1d2935] text-[#f7f4ed]"><BookOpen className="size-5" aria-hidden="true" /></span>
             <span><span className="block font-serif text-xl leading-none tracking-tight">EnPra</span><span className="mt-1 block text-[10px] font-semibold tracking-[0.18em] text-[#727a76] uppercase">English practice</span></span>
           </div>
-          <a href={signInHref} className="ml-auto inline-flex shrink-0 whitespace-nowrap text-sm font-semibold text-[#44514e] hover:text-[#1d2935]">ChatGPT로 로그인</a>
+          <a href={signInHref} target="_top" className="ml-auto inline-flex shrink-0 whitespace-nowrap text-sm font-semibold text-[#44514e] hover:text-[#1d2935]">ChatGPT로 로그인</a>
         </div>
       </header>
 
@@ -33,7 +33,7 @@ export default async function Home() {
           <h1 className="mt-4 max-w-3xl font-serif text-5xl leading-[1.04] tracking-tight sm:text-6xl">영어를,<br />매일 한 문장씩.</h1>
           <p className="mt-6 max-w-xl text-lg leading-8 text-[#5e6965]">EnPra는 짧게 쓰고, 차분하게 돌아보며 영어를 내 것으로 만드는 개인 연습 공간입니다.</p>
           <div className="mt-9 flex flex-col items-end gap-2 self-end text-right">
-            <Button asChild size="lg" className="h-12 w-fit rounded-xl bg-[#1d2935] px-6 text-[#fffdf8] hover:bg-[#344451]"><a href={signInHref} className="inline-flex items-center gap-2 whitespace-nowrap">ChatGPT로 학습 시작 <Sparkles className="size-4 shrink-0" aria-hidden="true" /></a></Button>
+            <Button asChild size="lg" className="h-12 w-fit rounded-xl bg-[#1d2935] px-6 text-[#fffdf8] hover:bg-[#344451]"><a href={signInHref} target="_top" className="inline-flex items-center gap-2 whitespace-nowrap">ChatGPT로 학습 시작 <Sparkles className="size-4 shrink-0" aria-hidden="true" /></a></Button>
             <span className="text-xs text-[#727a76]">별도 회원가입 없이 시작하세요.</span>
           </div>
         </div>
