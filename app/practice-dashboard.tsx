@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowUpRight, BookOpen, Check, Clock3, Flame, Lightbulb, Send, Sparkles, Target } from 'lucide-react';
+import { ArrowUpRight, BookOpen, Check, Clock3, Flame, KeyRound, Lightbulb, LogOut, Menu, Send, Sparkles, Target, UserRound, X } from 'lucide-react';
 import { useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
@@ -18,6 +18,7 @@ type PracticeDashboardProps = {
 export function PracticeDashboard({ displayName, signOutHref }: PracticeDashboardProps) {
   const [answer, setAnswer] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const wordCount = answer.trim() ? answer.trim().split(/\s+/).length : 0;
 
   return (
@@ -29,9 +30,39 @@ export function PracticeDashboard({ displayName, signOutHref }: PracticeDashboar
             <span><span className="block font-serif text-xl leading-none tracking-tight">EnPra</span><span className="mt-1 block text-[10px] font-semibold tracking-[0.18em] text-[#727a76] uppercase">English practice</span></span>
           </a>
           <nav aria-label="학습 메뉴" className="hidden items-center gap-6 text-sm font-medium text-[#56605f] md:flex"><a className="text-[#1d2935]" href="#today">Today</a><a href="#progress">Progress</a><a href="#library">Library</a></nav>
-          <a href={signOutHref} className="inline-flex h-8 items-center rounded-lg border border-[#d4ccbe] bg-[#fffdf8] px-3 text-xs font-medium text-[#56605f] hover:bg-[#eee9df]"><span className="mr-1.5 size-1.5 rounded-full bg-[#5d9477]" /> {displayName} · 로그아웃</a>
+          <button type="button" aria-label="계정 메뉴 열기" aria-expanded={drawerOpen} onClick={() => setDrawerOpen(true)} className="grid size-10 place-items-center rounded-xl border border-[#d4ccbe] bg-[#fffdf8] text-[#44514e] hover:bg-[#eee9df]"><Menu className="size-5" aria-hidden="true" /></button>
         </div>
       </header>
+
+      {drawerOpen && <button type="button" aria-label="계정 메뉴 닫기" onClick={() => setDrawerOpen(false)} className="fixed inset-0 z-40 bg-[#1d2935]/25 backdrop-blur-[1px]" />}
+      <aside aria-label="계정 메뉴" className={`fixed inset-y-0 right-0 z-50 flex w-[min(23rem,calc(100vw-1.5rem))] flex-col border-l border-[#dcd6ca] bg-[#fffdf8] p-5 shadow-[-16px_0_45px_rgba(29,41,53,0.14)] transition-transform duration-200 ${drawerOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-semibold text-[#727a76]">Account</p>
+          <button type="button" aria-label="계정 메뉴 닫기" onClick={() => setDrawerOpen(false)} className="grid size-9 place-items-center rounded-lg text-[#68736e] hover:bg-[#f1ede5]"><X className="size-5" aria-hidden="true" /></button>
+        </div>
+
+        <a href="/mypage" className="mt-6 flex items-center gap-3 rounded-2xl border border-[#e1dbcf] p-4 transition-colors hover:bg-[#f7f4ed]">
+          <span className="grid size-11 shrink-0 place-items-center rounded-full bg-[#e8f0eb] text-[#38634f]"><UserRound className="size-5" aria-hidden="true" /></span>
+          <span className="min-w-0"><span className="block truncate font-semibold">{displayName}</span><span className="mt-0.5 block text-xs text-[#737b76]">마이페이지</span></span>
+          <ArrowUpRight className="ml-auto size-4 shrink-0 text-[#89908b]" aria-hidden="true" />
+        </a>
+
+        <section className="mt-7">
+          <p className="px-1 text-[10px] font-bold tracking-[0.16em] text-[#8b918b] uppercase">AI connection</p>
+          <div className="mt-3 rounded-2xl border border-[#e1dbcf] p-4">
+            <div className="flex items-start gap-3">
+              <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#f1ede5] text-[#67716c]"><KeyRound className="size-5" aria-hidden="true" /></span>
+              <div className="min-w-0">
+                <p className="font-semibold">AI 사용 OAuth</p>
+                <p className="mt-1 flex items-center gap-1.5 text-sm text-[#737b76]"><span className="size-2 rounded-full bg-[#a8ada9]" />연결 필요</p>
+              </div>
+            </div>
+            <p className="mt-4 text-xs leading-relaxed text-[#7a817c]">연결하면 내 ChatGPT 계정으로 AI 피드백을 사용할 수 있습니다.</p>
+          </div>
+        </section>
+
+        <a href={signOutHref} className="mt-auto inline-flex w-fit items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold text-[#6a4135] hover:bg-[#faede7]"><LogOut className="size-4" aria-hidden="true" />로그아웃</a>
+      </aside>
 
       <div className="mx-auto grid max-w-7xl gap-7 px-5 py-7 lg:grid-cols-[218px_minmax(0,1fr)_260px] lg:px-8 lg:py-10">
         <aside className="hidden lg:block"><div className="sticky top-8 space-y-7">
