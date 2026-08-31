@@ -1,9 +1,36 @@
 'use client';
 
 import { ArrowLeft, CheckCircle2, ChevronRight, ListChecks, Sparkles } from 'lucide-react';
-import { useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 
 type VocabularyWord = { word: string; meanings: string[] };
+
+function FittedWord({ word }: { word: string }) {
+  const wordRef = useRef<HTMLHeadingElement>(null);
+
+  useLayoutEffect(() => {
+    const element = wordRef.current;
+    if (!element) return;
+
+    const fit = () => {
+      const maximum = window.matchMedia('(min-width: 640px)').matches ? 36 : 24;
+      let size = maximum;
+      element.style.fontSize = `${size}px`;
+
+      while (element.scrollWidth > element.clientWidth && size > 11) {
+        size -= 1;
+        element.style.fontSize = `${size}px`;
+      }
+    };
+
+    const observer = new ResizeObserver(fit);
+    observer.observe(element);
+    fit();
+    return () => observer.disconnect();
+  }, [word]);
+
+  return <h3 ref={wordRef} className="min-w-0 truncate font-serif font-semibold tracking-[-0.035em] text-[#293632]">{word}</h3>;
+}
 
 const lists: Array<{ id: string; date: string; label: string; count: number; status: string; words: VocabularyWord[] }> = [
   { id: 'aug-31', date: '2026. 08. 31', label: '오늘', count: 20, status: '학습 전', words: [{ word: 'habit', meanings: ['습관', '버릇'] }, { word: 'routine', meanings: ['일상', '규칙적인 절차'] }, { word: 'sustainable', meanings: ['지속 가능한', '계속할 수 있는'] }, { word: 'commitment', meanings: ['전념', '약속', '책임'] }, { word: 'consistent', meanings: ['일관된', '꾸준한'] }, { word: 'realistic', meanings: ['현실적인', '실현 가능한'] }] },
@@ -24,7 +51,7 @@ export function VocaListBoard() {
           <span className={selected.status === '학습 완료' ? 'rounded-full bg-[#e8f0eb] px-3 py-1.5 text-xs font-semibold text-[#38634f]' : 'rounded-full bg-[#f8eadf] px-3 py-1.5 text-xs font-semibold text-[#bd5d3e]'}>{selected.count}개 · {selected.status}</span>
         </div>
         <div className="overflow-hidden rounded-3xl border border-[#dcd6ca] bg-[#fffdf8] shadow-[0_18px_48px_rgba(35,44,43,0.05)]">
-          {selected.words.map((item, index) => <article key={item.word} className="grid grid-cols-[minmax(0,.9fr)_minmax(0,1.1fr)] items-center gap-3 border-b border-[#e7e0d5] px-5 py-5 last:border-b-0 sm:gap-8 sm:px-7"><div className="flex min-w-0 items-baseline gap-2 sm:gap-3"><span className="w-4 shrink-0 text-xs font-semibold text-[#a3aaa5] sm:w-5">{index + 1}</span><h3 className="min-w-0 font-serif text-2xl font-semibold tracking-[-0.035em] text-[#293632] sm:text-4xl">{item.word}</h3></div><div className="border-l border-[#e9e1d6] pl-3 text-sm leading-6 text-[#59645e] sm:pl-7 sm:text-base sm:leading-7">{item.meanings.map((meaning) => <p key={meaning}>{meaning}</p>)}</div></article>)}
+          {selected.words.map((item, index) => <article key={item.word} className="grid grid-cols-[minmax(0,.9fr)_minmax(0,1.1fr)] items-center gap-3 border-b border-[#e7e0d5] px-5 py-5 last:border-b-0 sm:gap-8 sm:px-7"><div className="flex min-w-0 items-baseline gap-2 sm:gap-3"><span className="w-4 shrink-0 text-xs font-semibold text-[#a3aaa5] sm:w-5">{index + 1}</span><FittedWord word={item.word} /></div><div className="border-l border-[#e9e1d6] pl-3 text-sm leading-6 text-[#59645e] sm:pl-7 sm:text-base sm:leading-7">{item.meanings.map((meaning) => <p key={meaning}>{meaning}</p>)}</div></article>)}
         </div>
       </section>
     );
