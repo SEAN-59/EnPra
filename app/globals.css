@@ -52,6 +52,19 @@ body { font-family: var(--font-enpra-sans), Arial, sans-serif; }
 
 .font-serif { font-family: var(--font-enpra-serif), Georgia, serif; }
 
+@media (prefers-reduced-motion: no-preference) {
+  button:not(:disabled),
+  [data-slot='button']:not([aria-disabled='true']) {
+    transition: transform 120ms cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 120ms ease, background-color 120ms ease;
+    will-change: transform;
+  }
+
+  button:not(:disabled):active,
+  [data-slot='button']:not([aria-disabled='true']):active {
+    transform: scale(0.96);
+  }
+}
+
 :root {
   --background: oklch(0.97 0.008 85);
   --foreground: oklch(0.25 0.025 240);
