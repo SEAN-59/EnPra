@@ -1,61 +1,53 @@
-'use client';
+import { BookOpen, CheckCircle2, PenLine, Sparkles } from 'lucide-react';
 
-import { ArrowUpRight, BookOpen, Check, Clock3, Flame, Lightbulb, Send, Sparkles, Target } from 'lucide-react';
-import { useState } from 'react';
-
-import { Badge } from '@/components/ui/badge';
+import { chatGPTSignInPath, chatGPTSignOutPath, getChatGPTUser } from '@/app/chatgpt-auth';
+import { PracticeDashboard } from '@/app/practice-dashboard';
 import { Button } from '@/components/ui/button';
-import { Progress, ProgressLabel, ProgressValue } from '@/components/ui/progress';
-import { Textarea } from '@/components/ui/textarea';
 
-const prompt = 'Describe a small habit you want to build this month. Explain why it matters and how you will make it easy to keep.';
+export const dynamic = 'force-dynamic';
 
-export default function Home() {
-  const [answer, setAnswer] = useState('');
-  const [submitted, setSubmitted] = useState(false);
-  const wordCount = answer.trim() ? answer.trim().split(/\s+/).length : 0;
+export default async function Home() {
+  const user = await getChatGPTUser();
+
+  if (user) {
+    return <PracticeDashboard displayName={user.displayName} signOutHref={chatGPTSignOutPath('/')} />;
+  }
+
+  const signInHref = chatGPTSignInPath('/');
 
   return (
     <main className="min-h-screen bg-[#f7f4ed] text-[#1d2935]">
-      <header className="border-b border-[#dcd6ca] bg-[#f7f4ed]/95 px-5 py-4 backdrop-blur sm:px-8">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
-          <a className="flex items-center gap-3" href="#today">
-            <span className="grid size-10 place-items-center rounded-xl bg-[#1d2935] text-[#f7f4ed] shadow-sm"><BookOpen className="size-5" aria-hidden="true" /></span>
+      <header className="border-b border-[#ded7ca] px-5 py-4 sm:px-8">
+        <div className="mx-auto flex max-w-6xl items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="grid size-10 place-items-center rounded-xl bg-[#1d2935] text-[#f7f4ed]"><BookOpen className="size-5" aria-hidden="true" /></span>
             <span><span className="block font-serif text-xl leading-none tracking-tight">EnPra</span><span className="mt-1 block text-[10px] font-semibold tracking-[0.18em] text-[#727a76] uppercase">English practice</span></span>
-          </a>
-          <nav aria-label="학습 메뉴" className="hidden items-center gap-6 text-sm font-medium text-[#56605f] md:flex"><a className="text-[#1d2935]" href="#today">Today</a><a href="#progress">Progress</a><a href="#library">Library</a></nav>
-          <Badge variant="outline" className="h-7 border-[#d4ccbe] bg-[#fffdf8] px-3 text-[#56605f]"><span className="mr-1 size-1.5 rounded-full bg-[#e9784f]" /> Personal workspace</Badge>
+          </div>
+          <a href={signInHref} className="text-sm font-semibold text-[#44514e] hover:text-[#1d2935]">ChatGPT로 로그인</a>
         </div>
       </header>
 
-      <div className="mx-auto grid max-w-7xl gap-7 px-5 py-7 lg:grid-cols-[218px_minmax(0,1fr)_260px] lg:px-8 lg:py-10">
-        <aside className="hidden lg:block"><div className="sticky top-8 space-y-7">
-          <section className="rounded-2xl border border-[#dfd8cb] bg-[#fffdf8] p-5 shadow-[0_10px_30px_rgba(35,44,43,0.04)]">
-            <div className="flex items-center gap-2 text-sm font-semibold"><Flame className="size-4 text-[#e9784f]" aria-hidden="true" />5-day rhythm</div>
-            <div className="mt-4 flex gap-1.5" aria-label="이번 주 학습 현황">{['M','T','W','T','F','S','S'].map((day, index) => <span key={`${day}-${index}`} className={`grid size-6 place-items-center rounded-md text-[10px] font-bold ${index < 5 ? 'bg-[#1d2935] text-[#fffdf8]' : 'bg-[#eee9df] text-[#8b918b]'}`}>{day}</span>)}</div>
-            <p className="mt-4 text-xs leading-relaxed text-[#717873]">One thoughtful answer a day is enough to build fluency.</p>
-          </section>
-          <section id="library" className="px-1"><p className="mb-3 text-[10px] font-bold tracking-[0.16em] text-[#8b918b] uppercase">Practice sets</p><div className="space-y-1 text-sm"><a className="flex items-center gap-3 rounded-lg bg-[#e9e5dc] px-3 py-2.5 font-semibold" href="#today"><Target className="size-4 text-[#e9784f]" aria-hidden="true" />Daily writing</a><a className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-[#66706d] hover:bg-[#ebe7dd]" href="#progress"><Check className="size-4" aria-hidden="true" />Review mistakes</a><a className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-[#66706d] hover:bg-[#ebe7dd]" href="#library"><BookOpen className="size-4" aria-hidden="true" />Useful phrases</a></div></section>
-          <p className="px-1 text-xs leading-relaxed text-[#8b918b]">Feedback will come from your personal Codex connection once the local bridge is linked.</p>
-        </div></aside>
+      <section className="mx-auto grid max-w-6xl gap-12 px-5 py-18 sm:px-8 lg:grid-cols-[1.15fr_.85fr] lg:items-center lg:py-28">
+        <div>
+          <p className="text-sm font-semibold tracking-wide text-[#d76a47]">TODAY&apos;S ENGLISH, YOUR WORDS</p>
+          <h1 className="mt-4 max-w-3xl font-serif text-5xl leading-[1.04] tracking-tight sm:text-6xl">영어를,<br />매일 한 문장씩.</h1>
+          <p className="mt-6 max-w-xl text-lg leading-8 text-[#5e6965]">EnPra는 짧게 쓰고, 차분하게 돌아보며 영어를 내 것으로 만드는 개인 연습 공간입니다.</p>
+          <div className="mt-9 flex flex-wrap items-center gap-4">
+            <Button asChild size="lg" className="h-12 rounded-xl bg-[#1d2935] px-6 text-[#fffdf8] hover:bg-[#344451]"><a href={signInHref}>ChatGPT로 학습 시작 <Sparkles className="size-4" data-icon="inline-end" aria-hidden="true" /></a></Button>
+            <span className="text-sm text-[#727a76]">별도 회원가입 없이 시작하세요.</span>
+          </div>
+        </div>
 
-        <section id="today" className="min-w-0">
-          <div className="mb-6 flex flex-wrap items-end justify-between gap-3"><div><p className="text-sm font-semibold text-[#d76a47]">Tuesday · 10 minutes</p><h1 className="mt-1 font-serif text-4xl tracking-tight sm:text-5xl">Your practice, today.</h1></div><Badge className="h-7 bg-[#e7efe9] px-3 text-[#32614c] hover:bg-[#e7efe9]">Intermediate · B1</Badge></div>
-          <article className="overflow-hidden rounded-3xl border border-[#dcd6ca] bg-[#fffdf8] shadow-[0_18px_48px_rgba(35,44,43,0.06)]">
-            <div className="border-b border-[#e4ded2] bg-[#e8f0eb] px-6 py-4 sm:px-8"><div className="flex items-center gap-2 text-sm font-semibold text-[#38634f]"><Sparkles className="size-4" aria-hidden="true" />Daily prompt</div></div>
-            <div className="px-6 py-7 sm:px-8 sm:py-9"><p className="max-w-2xl font-serif text-[1.7rem] leading-[1.23] tracking-tight text-[#26333d] sm:text-[2rem]">{prompt}</p><div className="mt-5 flex flex-wrap gap-2"><Badge variant="secondary" className="bg-[#f1ede5] text-[#626a66]">Use 3–5 sentences</Badge><Badge variant="secondary" className="bg-[#f1ede5] text-[#626a66]">Focus: future plans</Badge></div>
-              <label className="mt-8 block" htmlFor="answer"><span className="mb-2 block text-sm font-semibold">Write your answer</span><Textarea id="answer" value={answer} onChange={(event) => { setAnswer(event.target.value); setSubmitted(false); }} placeholder="Start with: This month, I want to..." className="min-h-52 resize-y border-[#d8d0c3] bg-[#fffefa] p-4 text-base leading-7 shadow-inner shadow-[#e8e1d5]/30 focus-visible:border-[#d76a47] focus-visible:ring-[#f2c9b9]" /></label>
-              <div className="mt-3 flex items-center justify-between gap-3 text-xs text-[#808780]"><span>{wordCount} words</span><span>Try for 45–80 words</span></div>
-              <div className="mt-6 flex flex-wrap items-center justify-between gap-4"><p className="max-w-sm text-xs leading-relaxed text-[#777f79]">Your answer stays in your personal workspace. The bridge is not connected in this first screen yet.</p><Button size="lg" disabled={!answer.trim()} onClick={() => setSubmitted(true)} className="h-11 rounded-xl bg-[#1d2935] px-5 text-[#fffdf8] hover:bg-[#344451]">Send for feedback <Send className="size-4" data-icon="inline-end" aria-hidden="true" /></Button></div>
-            </div>
-          </article>
-          {submitted && <section className="mt-6 rounded-2xl border border-[#bcd8c5] bg-[#edf7f0] p-5 text-[#29533e]" aria-live="polite"><div className="flex items-start gap-3"><span className="grid size-8 shrink-0 place-items-center rounded-full bg-[#cce7d3]"><Check className="size-4" aria-hidden="true" /></span><div><p className="font-semibold">Answer saved for feedback</p><p className="mt-1 text-sm text-[#47735d]">Connect your local bridge to receive the full grammar and expression review here.</p></div></div></section>}
-        </section>
-
-        <aside id="progress" className="space-y-5"><section className="rounded-2xl border border-[#dfd8cb] bg-[#fffdf8] p-5"><div className="flex items-center justify-between"><h2 className="font-serif text-xl">This week</h2><ArrowUpRight className="size-4 text-[#8a918b]" aria-hidden="true" /></div><Progress value={71} className="mt-5 gap-2 [&_[data-slot=progress-indicator]]:bg-[#e9784f]"><ProgressLabel className="text-xs font-medium text-[#6d746f]">Practice goal</ProgressLabel><ProgressValue className="text-xs text-[#6d746f]">5 / 7</ProgressValue></Progress><div className="mt-6 grid grid-cols-2 gap-3 border-t border-[#eee8dd] pt-5"><div><p className="text-2xl font-semibold">12</p><p className="mt-1 text-xs text-[#7a827c]">answers saved</p></div><div><p className="text-2xl font-semibold">38</p><p className="mt-1 text-xs text-[#7a827c]">new phrases</p></div></div></section>
-          <section className="rounded-2xl bg-[#1d2935] p-5 text-[#f7f4ed]"><div className="flex items-center gap-2 text-sm font-semibold text-[#f0bf7f]"><Lightbulb className="size-4" aria-hidden="true" />Tiny focus</div><p className="mt-3 font-serif text-xl leading-snug">Use “I am going to” for plans you have already decided.</p><p className="mt-4 text-xs leading-relaxed text-[#bac3bd]">Example: I am going to prepare my lunch the night before.</p></section>
-          <section className="rounded-2xl border border-dashed border-[#cfc6b6] p-5 text-sm text-[#6f7771]"><div className="flex items-center gap-2 font-semibold text-[#3e4b50]"><Clock3 className="size-4" aria-hidden="true" />Next review</div><p className="mt-2 text-xs leading-relaxed">Your common phrase patterns will appear here after the local bridge is linked.</p></section></aside>
-      </div>
+        <div className="rounded-[2rem] border border-[#ded7ca] bg-[#fffdf8] p-6 shadow-[0_20px_55px_rgba(35,44,43,0.08)] sm:p-8">
+          <p className="text-sm font-semibold text-[#d76a47]">10 minutes a day</p>
+          <h2 className="mt-2 font-serif text-3xl tracking-tight">오늘의 연습 흐름</h2>
+          <div className="mt-7 space-y-5">
+            <div className="flex gap-4"><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#e8f0eb] text-[#38634f]"><PenLine className="size-5" aria-hidden="true" /></span><div><p className="font-semibold">짧게 작성하기</p><p className="mt-1 text-sm leading-6 text-[#68736e]">하루 한 주제로 3–5문장을 영어로 써 보세요.</p></div></div>
+            <div className="flex gap-4"><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#f8eadf] text-[#c86442]"><Sparkles className="size-5" aria-hidden="true" /></span><div><p className="font-semibold">피드백 받기</p><p className="mt-1 text-sm leading-6 text-[#68736e]">문법과 표현을 이해하기 쉬운 방식으로 확인합니다.</p></div></div>
+            <div className="flex gap-4"><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#e7efe9] text-[#38634f]"><CheckCircle2 className="size-5" aria-hidden="true" /></span><div><p className="font-semibold">나만의 기록 만들기</p><p className="mt-1 text-sm leading-6 text-[#68736e]">로그인한 계정에 연습 흐름을 안전하게 이어갑니다.</p></div></div>
+          </div>
+        </div>
+      </section>
     </main>
   );
 }

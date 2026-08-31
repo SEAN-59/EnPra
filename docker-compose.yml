@@ -1,0 +1,16 @@
+services:
+  bridge:
+    build: ./bridge
+    ports:
+      - "127.0.0.1:8787:8787"
+    environment:
+      ENPRA_DATA_DIR: /data
+      ENPRA_CORS_ORIGIN: ${ENPRA_CORS_ORIGIN:-http://localhost:3000}
+      ENPRA_SESSION_SECRET: ${ENPRA_SESSION_SECRET:?Set ENPRA_SESSION_SECRET in .env}
+      NODE_ENV: production
+    volumes:
+      - enpra_data:/data
+    restart: unless-stopped
+
+volumes:
+  enpra_data:
