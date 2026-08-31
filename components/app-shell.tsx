@@ -1,8 +1,10 @@
 'use client';
 
 import type { LucideIcon } from 'lucide-react';
-import { ArrowUpRight, BookOpen, Headphones, KeyRound, LogOut, Menu, Mic, PenLine, SpellCheck, UserRound, X } from 'lucide-react';
+import { ArrowUpRight, BookOpen, Headphones, LogOut, Menu, Mic, PenLine, SpellCheck, UserRound, X } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
+
+import { AIConnectionStatus } from '@/components/ai-connection-status';
 
 type AppSection = 'HOME' | 'VOCA' | 'READING' | 'LISTENING' | 'WRITING' | 'SPEAKING';
 
@@ -59,7 +61,7 @@ export function AppShell({ activeSection, children, displayName, signOutHref }: 
       <aside aria-label="계정 메뉴" className={`fixed inset-y-0 right-0 z-50 flex w-[min(23rem,calc(100vw-1.5rem))] flex-col border-l border-[#dcd6ca] bg-[#fffdf8] p-5 shadow-[-16px_0_45px_rgba(29,41,53,0.14)] transition-transform duration-200 ${accountDrawerOpen ? 'translate-x-0' : 'translate-x-full'}`}>
         <div className="flex items-center justify-between"><p className="text-sm font-semibold text-[#727a76]">Account</p><button type="button" aria-label="계정 메뉴 닫기" onClick={() => setAccountDrawerOpen(false)} className="grid size-9 place-items-center rounded-lg text-[#68736e] hover:bg-[#f1ede5]"><X className="size-5" aria-hidden="true" /></button></div>
         <a href="/mypage" className="mt-6 flex items-center gap-3 rounded-2xl border border-[#e1dbcf] p-4 transition-colors hover:bg-[#f7f4ed]"><span className="grid size-11 shrink-0 place-items-center rounded-full bg-[#e8f0eb] text-[#38634f]"><UserRound className="size-5" aria-hidden="true" /></span><span className="min-w-0"><span className="block truncate font-semibold">{displayName}</span><span className="mt-0.5 block text-xs text-[#737b76]">마이페이지</span></span><ArrowUpRight className="ml-auto size-4 shrink-0 text-[#89908b]" aria-hidden="true" /></a>
-        <section className="mt-7"><p className="px-1 text-[10px] font-bold tracking-[0.16em] text-[#8b918b] uppercase">AI connection</p><div className="mt-3 rounded-2xl border border-[#e1dbcf] p-4"><div className="flex items-start gap-3"><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#f1ede5] text-[#67716c]"><KeyRound className="size-5" aria-hidden="true" /></span><div><p className="font-semibold">AI 사용 OAuth</p><p className="mt-1 flex items-center gap-1.5 text-sm text-[#737b76]"><span className="size-2 rounded-full bg-[#a8ada9]" />연결 필요</p></div></div><p className="mt-4 text-xs leading-relaxed text-[#7a817c]">연결하면 내 ChatGPT 계정으로 AI 피드백을 사용할 수 있습니다.</p></div></section>
+        <AIConnectionStatus />
         <a href={signOutHref} className="mt-auto inline-flex w-fit items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold text-[#6a4135] hover:bg-[#faede7]"><LogOut className="size-4" aria-hidden="true" />로그아웃</a>
       </aside>
 
