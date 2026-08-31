@@ -40,7 +40,10 @@ export async function POST(request: NextRequest) {
       status: response.status,
       headers: { 'Content-Type': response.headers.get('Content-Type') ?? 'application/json; charset=utf-8' },
     });
-  } catch {
+  } catch (error) {
+    console.error('EnPra AI bridge request failed', {
+      message: error instanceof Error ? error.message : String(error),
+    });
     return Response.json({ error: 'AI 연결 서버에 닿지 못했습니다. 잠시 후 다시 시도해 주세요.' }, { status: 502 });
   }
 }
