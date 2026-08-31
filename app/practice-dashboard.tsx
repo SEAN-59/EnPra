@@ -19,20 +19,36 @@ export function PracticeDashboard({ displayName, signOutHref }: PracticeDashboar
   const [answer, setAnswer] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [leftDrawerOpen, setLeftDrawerOpen] = useState(false);
   const wordCount = answer.trim() ? answer.trim().split(/\s+/).length : 0;
 
   return (
     <main className="min-h-screen bg-[#f7f4ed] text-[#1d2935]">
       <header className="border-b border-[#dcd6ca] bg-[#f7f4ed]/95 px-5 py-4 backdrop-blur sm:px-8">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
-          <a className="flex items-center gap-3" href="#today">
-            <span className="grid size-10 place-items-center rounded-xl bg-[#1d2935] text-[#f7f4ed] shadow-sm"><BookOpen className="size-5" aria-hidden="true" /></span>
+          <div className="flex items-center gap-3">
+            <button type="button" aria-label="학습 메뉴 열기" aria-expanded={leftDrawerOpen} onClick={() => { setLeftDrawerOpen(true); setDrawerOpen(false); }} className="grid size-10 place-items-center rounded-xl bg-[#1d2935] text-[#f7f4ed] shadow-sm lg:hidden"><Menu className="size-5" aria-hidden="true" /></button>
+            <a className="flex items-center gap-3" href="#today">
             <span><span className="block font-serif text-xl leading-none tracking-tight">EnPra</span><span className="mt-1 block text-[10px] font-semibold tracking-[0.18em] text-[#727a76] uppercase">English practice</span></span>
-          </a>
-          <nav aria-label="학습 메뉴" className="hidden items-center gap-6 text-sm font-medium text-[#56605f] md:flex"><a className="text-[#1d2935]" href="#today">Today</a><a href="#progress">Progress</a><a href="#library">Library</a></nav>
-          <button type="button" aria-label="계정 메뉴 열기" aria-expanded={drawerOpen} onClick={() => setDrawerOpen(true)} className="grid size-10 place-items-center rounded-xl border border-[#d4ccbe] bg-[#fffdf8] text-[#44514e] hover:bg-[#eee9df]"><Menu className="size-5" aria-hidden="true" /></button>
+            </a>
+          </div>
+          <button type="button" aria-label="프로필 메뉴 열기" aria-expanded={drawerOpen} onClick={() => { setDrawerOpen(true); setLeftDrawerOpen(false); }} className="grid size-10 place-items-center rounded-xl border border-[#d4ccbe] bg-[#fffdf8] text-[#44514e] hover:bg-[#eee9df]"><UserRound className="size-5" aria-hidden="true" /></button>
         </div>
       </header>
+
+      {leftDrawerOpen && <button type="button" aria-label="학습 메뉴 닫기" onClick={() => setLeftDrawerOpen(false)} className="fixed inset-0 z-40 bg-[#1d2935]/25 backdrop-blur-[1px] lg:hidden" />}
+      <aside aria-label="학습 메뉴" className={`fixed inset-y-0 left-0 z-50 flex w-[min(20rem,calc(100vw-1.5rem))] flex-col border-r border-[#dcd6ca] bg-[#fffdf8] p-5 shadow-[16px_0_45px_rgba(29,41,53,0.14)] transition-transform duration-200 lg:hidden ${leftDrawerOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2"><span className="grid size-9 place-items-center rounded-xl bg-[#1d2935] text-[#f7f4ed]"><BookOpen className="size-4" aria-hidden="true" /></span><span className="font-serif text-xl">EnPra</span></div>
+          <button type="button" aria-label="학습 메뉴 닫기" onClick={() => setLeftDrawerOpen(false)} className="grid size-9 place-items-center rounded-lg text-[#68736e] hover:bg-[#f1ede5]"><X className="size-5" aria-hidden="true" /></button>
+        </div>
+        <nav aria-label="학습 메뉴" className="mt-8 space-y-1 text-sm">
+          <a onClick={() => setLeftDrawerOpen(false)} className="flex items-center gap-3 rounded-lg bg-[#e9e5dc] px-3 py-3 font-semibold" href="#today"><Target className="size-4 text-[#e9784f]" aria-hidden="true" />오늘의 쓰기</a>
+          <a onClick={() => setLeftDrawerOpen(false)} className="flex items-center gap-3 rounded-lg px-3 py-3 text-[#66706d] hover:bg-[#ebe7dd]" href="#progress"><Check className="size-4" aria-hidden="true" />오답 돌아보기</a>
+          <a onClick={() => setLeftDrawerOpen(false)} className="flex items-center gap-3 rounded-lg px-3 py-3 text-[#66706d] hover:bg-[#ebe7dd]" href="#library"><BookOpen className="size-4" aria-hidden="true" />유용한 표현</a>
+        </nav>
+        <div className="mt-auto rounded-2xl bg-[#f1ede5] p-4 text-xs leading-relaxed text-[#69736e]">하루 한 번의 짧은 연습으로 영어 감각을 이어가세요.</div>
+      </aside>
 
       {drawerOpen && <button type="button" aria-label="계정 메뉴 닫기" onClick={() => setDrawerOpen(false)} className="fixed inset-0 z-40 bg-[#1d2935]/25 backdrop-blur-[1px]" />}
       <aside aria-label="계정 메뉴" className={`fixed inset-y-0 right-0 z-50 flex w-[min(23rem,calc(100vw-1.5rem))] flex-col border-l border-[#dcd6ca] bg-[#fffdf8] p-5 shadow-[-16px_0_45px_rgba(29,41,53,0.14)] transition-transform duration-200 ${drawerOpen ? 'translate-x-0' : 'translate-x-full'}`}>
