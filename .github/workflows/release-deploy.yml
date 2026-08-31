@@ -1,8 +1,9 @@
-name: Release EnPra bridge
+name: Deploy EnPra production bridge
 
 on:
-  release:
-    types: [published]
+  push:
+    tags:
+      - 'v*.*.*'
 
 permissions:
   contents: read
@@ -21,12 +22,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ github.ref }}
+          fetch-depth: 0
 
       - id: version
         name: Enforce semantic version
         env:
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           if [[ ! "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
@@ -41,6 +43,14 @@ jobs:
             exit 1
           fi
 
+          git fetch origin main --depth=1
+          tag_commit="$(git rev-list -n 1 "$RELEASE_TAG")"
+          main_commit="$(git rev-parse origin/main)"
+          if [[ "$tag_commit" != "$main_commit" ]]; then
+            echo "The release tag must point to the current tip of main."
+            exit 1
+          fi
+
           echo "value=$version" >> "$GITHUB_OUTPUT"
 
   build-and-push:
@@ -52,7 +62,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ github.ref }}
 
       - id: image
         name: Define image name

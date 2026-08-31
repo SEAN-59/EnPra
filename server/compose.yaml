@@ -31,6 +31,35 @@ services:
       retries: 3
       start_period: 30s
 
+  dev_bridge:
+    image: ${ENPRA_DEV_IMAGE:?Set ENPRA_DEV_IMAGE in .env}
+    container_name: ${ENPRA_DEV_APP_CONTAINER_NAME:?Set ENPRA_DEV_APP_CONTAINER_NAME in .env}
+    restart: unless-stopped
+    env_file:
+      - ./dev_app/app.env
+    environment:
+      HOSTNAME: "0.0.0.0"
+      PORT: "${ENPRA_DEV_CONTAINER_PORT:?Set ENPRA_DEV_CONTAINER_PORT in .env}"
+    ports:
+      - "${ENPRA_BIND_ADDR:?Set ENPRA_BIND_ADDR in .env}:${ENPRA_DEV_HOST_PORT:?Set ENPRA_DEV_HOST_PORT in .env}:${ENPRA_DEV_CONTAINER_PORT:?Set ENPRA_DEV_CONTAINER_PORT in .env}"
+    volumes:
+      - ./dev_app/data:/data
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - enpra
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"fetch('http://127.0.0.1:' + process.env.PORT + '/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
   db:
     image: postgres:${POSTGRES_IMAGE_TAG:?Set POSTGRES_IMAGE_TAG in .env}
     container_name: ${ENPRA_DB_CONTAINER_NAME:?Set ENPRA_DB_CONTAINER_NAME in .env}

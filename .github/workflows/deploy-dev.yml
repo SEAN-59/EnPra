@@ -1,0 +1,95 @@
+name: Deploy EnPra development bridge
+
+on:
+  push:
+    branches: [dev]
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: enpra-development-deploy
+  cancel-in-progress: true
+
+jobs:
+  build-and-push:
+    name: Build and publish development image
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.image.outputs.value }}
+      tag: ${{ steps.image.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: image
+        name: Define image name
+        run: |
+          echo "value=ghcr.io/sean-59/enpra-bridge" >> "$GITHUB_OUTPUT"
+          echo "tag=dev-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./bridge
+          file: ./bridge/Dockerfile
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ${{ steps.image.outputs.value }}:${{ steps.image.outputs.tag }}
+            ${{ steps.image.outputs.value }}:dev-latest
+
+  deploy:
+    name: Deploy development bridge to NAS
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: development
+    steps:
+      - name: Configure SSH
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -p "$SSH_PORT" -H "$SSH_HOST" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Log NAS into GitHub Container Registry
+        env:
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$GHCR_TOKEN" | ssh -i ~/.ssh/id_ed25519 -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
+            '/usr/local/bin/docker login ghcr.io --username SEAN-59 --password-stdin'
+
+      - name: Pull development image and restart only the development bridge
+        env:
+          COMPOSE_PATH: ${{ vars.COMPOSE_PATH || secrets.COMPOSE_PATH }}
+          IMAGE: ${{ needs.build-and-push.outputs.image }}
+          TAG: ${{ needs.build-and-push.outputs.tag }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_ed25519 -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
+            "set -eu
+            cd '$COMPOSE_PATH'
+            sed -i 's|^ENPRA_DEV_IMAGE=.*|ENPRA_DEV_IMAGE=$IMAGE:$TAG|' .env
+            /usr/local/bin/docker compose --env-file .env -f compose.yaml pull dev_bridge
+            /usr/local/bin/docker compose --env-file .env -f compose.yaml up -d --wait --wait-timeout 120 dev_bridge
+            /usr/local/bin/docker compose --env-file .env -f compose.yaml ps dev_bridge"
