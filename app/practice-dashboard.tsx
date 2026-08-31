@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowUpRight, BookOpen, Check, Clock3, Flame, KeyRound, Lightbulb, LogOut, Menu, Send, Sparkles, Target, UserRound, X } from 'lucide-react';
+import { ArrowUpRight, BookOpen, Check, Clock3, Flame, Headphones, KeyRound, Lightbulb, LogOut, Menu, Mic, PenLine, Send, Sparkles, SpellCheck, UserRound, X } from 'lucide-react';
 import { useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
@@ -43,9 +43,11 @@ export function PracticeDashboard({ displayName, signOutHref }: PracticeDashboar
           <button type="button" aria-label="학습 메뉴 닫기" onClick={() => setLeftDrawerOpen(false)} className="grid size-9 place-items-center rounded-lg text-[#68736e] hover:bg-[#f1ede5]"><X className="size-5" aria-hidden="true" /></button>
         </div>
         <nav aria-label="학습 메뉴" className="mt-8 space-y-1 text-sm">
-          <a onClick={() => setLeftDrawerOpen(false)} className="flex items-center gap-3 rounded-lg bg-[#e9e5dc] px-3 py-3 font-semibold" href="#today"><Target className="size-4 text-[#e9784f]" aria-hidden="true" />오늘의 쓰기</a>
-          <a onClick={() => setLeftDrawerOpen(false)} className="flex items-center gap-3 rounded-lg px-3 py-3 text-[#66706d] hover:bg-[#ebe7dd]" href="#progress"><Check className="size-4" aria-hidden="true" />오답 돌아보기</a>
-          <a onClick={() => setLeftDrawerOpen(false)} className="flex items-center gap-3 rounded-lg px-3 py-3 text-[#66706d] hover:bg-[#ebe7dd]" href="#library"><BookOpen className="size-4" aria-hidden="true" />유용한 표현</a>
+          <a onClick={() => setLeftDrawerOpen(false)} className="flex items-center gap-3 rounded-lg px-3 py-3 text-[#66706d] hover:bg-[#ebe7dd]" href="#library"><SpellCheck className="size-4" aria-hidden="true" />VOCA</a>
+          <a onClick={() => setLeftDrawerOpen(false)} className="flex items-center gap-3 rounded-lg px-3 py-3 text-[#66706d] hover:bg-[#ebe7dd]" href="#library"><BookOpen className="size-4" aria-hidden="true" />READING</a>
+          <a onClick={() => setLeftDrawerOpen(false)} className="flex items-center gap-3 rounded-lg px-3 py-3 text-[#66706d] hover:bg-[#ebe7dd]" href="#library"><Headphones className="size-4" aria-hidden="true" />LISTENING</a>
+          <a onClick={() => setLeftDrawerOpen(false)} className="flex items-center gap-3 rounded-lg bg-[#e9e5dc] px-3 py-3 font-semibold" href="#today"><PenLine className="size-4 text-[#e9784f]" aria-hidden="true" />WRITING</a>
+          <a onClick={() => setLeftDrawerOpen(false)} className="flex items-center gap-3 rounded-lg px-3 py-3 text-[#66706d] hover:bg-[#ebe7dd]" href="#library"><Mic className="size-4" aria-hidden="true" />SPEAKING</a>
         </nav>
         <div className="mt-auto rounded-2xl bg-[#f1ede5] p-4 text-xs leading-relaxed text-[#69736e]">하루 한 번의 짧은 연습으로 영어 감각을 이어가세요.</div>
       </aside>
@@ -87,7 +89,7 @@ export function PracticeDashboard({ displayName, signOutHref }: PracticeDashboar
             <div className="mt-4 flex gap-1.5" aria-label="이번 주 학습 현황">{['M','T','W','T','F','S','S'].map((day, index) => <span key={`${day}-${index}`} className={`grid size-6 place-items-center rounded-md text-[10px] font-bold ${index < 5 ? 'bg-[#1d2935] text-[#fffdf8]' : 'bg-[#eee9df] text-[#8b918b]'}`}>{day}</span>)}</div>
             <p className="mt-4 text-xs leading-relaxed text-[#717873]">One thoughtful answer a day is enough to build fluency.</p>
           </section>
-          <section id="library" className="px-1"><p className="mb-3 text-[10px] font-bold tracking-[0.16em] text-[#8b918b] uppercase">Practice sets</p><div className="space-y-1 text-sm"><a className="flex items-center gap-3 rounded-lg bg-[#e9e5dc] px-3 py-2.5 font-semibold" href="#today"><Target className="size-4 text-[#e9784f]" aria-hidden="true" />Daily writing</a><a className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-[#66706d] hover:bg-[#ebe7dd]" href="#progress"><Check className="size-4" aria-hidden="true" />Review mistakes</a><a className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-[#66706d] hover:bg-[#ebe7dd]" href="#library"><BookOpen className="size-4" aria-hidden="true" />Useful phrases</a></div></section>
+          <section id="library" className="px-1"><p className="mb-3 text-[10px] font-bold tracking-[0.16em] text-[#8b918b] uppercase">Practice</p><div className="space-y-1 text-sm"><a className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-[#66706d] hover:bg-[#ebe7dd]" href="#library"><SpellCheck className="size-4" aria-hidden="true" />VOCA</a><a className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-[#66706d] hover:bg-[#ebe7dd]" href="#library"><BookOpen className="size-4" aria-hidden="true" />READING</a><a className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-[#66706d] hover:bg-[#ebe7dd]" href="#library"><Headphones className="size-4" aria-hidden="true" />LISTENING</a><a className="flex items-center gap-3 rounded-lg bg-[#e9e5dc] px-3 py-2.5 font-semibold" href="#today"><PenLine className="size-4 text-[#e9784f]" aria-hidden="true" />WRITING</a><a className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-[#66706d] hover:bg-[#ebe7dd]" href="#library"><Mic className="size-4" aria-hidden="true" />SPEAKING</a></div></section>
           <p className="px-1 text-xs leading-relaxed text-[#8b918b]">Feedback will come from your personal Codex connection once the local bridge is linked.</p>
         </div></aside>
 
