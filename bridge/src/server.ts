@@ -10,6 +10,7 @@ import { CodexRegistry } from './codex.js';
 
 type UserContext = { id: string; displayName: string };
 type Variables = { user: UserContext };
+type LearningRequest = { input?: unknown; context?: unknown };
 
 const port = Number(process.env.PORT ?? 8787);
 const dataDir = process.env.ENPRA_DATA_DIR ?? join(process.cwd(), '.enpra-data');
@@ -85,6 +86,15 @@ async function markConnection(userId: string, status: 'pending' | 'active' | 'di
          updated_at = NOW()`,
     [connectionId, userId, status, `codex/${userId}`, planType ?? null],
   );
+}
+
+function learningPrompt(input: string, context?: string) {
+  return [
+    '다음은 EnPra 영어 학습 요청입니다.',
+    '학습자가 이해하기 쉽게 답하고, 필요한 경우 영어 예문과 한국어 설명을 함께 제공하세요.',
+    context ? `학습 맥락:\n${context}` : null,
+    `학습자 요청:\n${input}`,
+  ].filter(Boolean).join('\n\n');
 }
 
 const app = new Hono<{ Variables: Variables }>();
@@ -165,6 +175,37 @@ app.get('/api/connections/codex', async (c) => {
   }
 
   return c.json({ connection: current.rows[0] });
+});
+
+app.post('/api/ai/respond', async (c) => {
+  const user = c.get('user');
+  let body: LearningRequest;
+  try {
+    body = await c.req.json<LearningRequest>();
+  } catch {
+    return c.json({ error: 'AI 요청 본문이 올바르지 않습니다.' }, 400);
+  }
+
+  const input = typeof body.input === 'string' ? body.input.trim() : '';
+  const context = typeof body.context === 'string' ? body.context.trim() : undefined;
+  if (!input || input.length > 8_000 || (context && context.length > 6_000)) {
+    return c.json({ error: '학습 요청 또는 학습 맥락의 길이가 올바르지 않습니다.' }, 400);
+  }
+
+  try {
+    const account = await codex.get(user.id).readAccount();
+    if (account?.type !== 'chatgpt') {
+      await markConnection(user.id, 'disconnected');
+      return c.json({ error: '먼저 ChatGPT OAuth 연결을 완료해 주세요.' }, 409);
+    }
+
+    await markConnection(user.id, 'active', account.planType);
+    const result = await codex.get(user.id).runLearningPrompt(learningPrompt(input, context));
+    return c.json(result);
+  } catch (error) {
+    await markConnection(user.id, 'error');
+    return c.json({ error: error instanceof Error ? error.message : 'AI 학습 요청에 실패했습니다.' }, 502);
+  }
 });
 
 app.post('/api/connections/codex/disconnect', async (c) => {
