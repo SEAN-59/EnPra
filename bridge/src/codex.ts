@@ -32,6 +32,18 @@ type CompletedTurn = {
   items?: Array<{ type?: string; text?: string }>;
 };
 
+type CompletedItem = {
+  type?: string;
+  text?: string;
+  id?: string;
+};
+
+type AgentMessageDelta = {
+  delta?: string;
+  itemId?: string;
+  turnId?: string;
+};
+
 type TurnWaiter = {
   reject: (error: Error) => void;
   resolve: (turn: CompletedTurn) => void;
@@ -42,6 +54,8 @@ class CodexAppServer {
   private readonly child: ChildProcessWithoutNullStreams;
   private readonly pending = new Map<number, PendingRequest>();
   private readonly completedTurns = new Map<string, CompletedTurn>();
+  private readonly completedItems = new Map<string, CompletedItem[]>();
+  private readonly messageDeltas = new Map<string, Map<string, string>>();
   private readonly turnWaiters = new Map<string, TurnWaiter>();
   private readonly initialization: Promise<void>;
   private buffer = '';
@@ -104,15 +118,41 @@ class CodexAppServer {
         return;
       }
 
+      if (message.method === 'item/completed') this.recordCompletedItem(message.params as { turnId?: string; item?: CompletedItem });
+      if (message.method === 'item/agentMessage/delta') this.recordAgentMessageDelta(message.params as AgentMessageDelta);
       if (message.method === 'turn/completed') this.completeTurn(message.params as CompletedTurn & { id?: string; turn?: CompletedTurn });
     } catch {
       // Ignore non-protocol output from the child process.
     }
   }
 
+  private recordCompletedItem(params: { turnId?: string; item?: CompletedItem }) {
+    if (!params.turnId || !params.item) return;
+    const items = this.completedItems.get(params.turnId) ?? [];
+    items.push(params.item);
+    this.completedItems.set(params.turnId, items);
+  }
+
+  private recordAgentMessageDelta(params: AgentMessageDelta) {
+    if (!params.turnId || !params.itemId || typeof params.delta !== 'string') return;
+    const messages = this.messageDeltas.get(params.turnId) ?? new Map<string, string>();
+    messages.set(params.itemId, `${messages.get(params.itemId) ?? ''}${params.delta}`);
+    this.messageDeltas.set(params.turnId, messages);
+  }
+
   private completeTurn(params: CompletedTurn & { threadId?: string; turn?: CompletedTurn }) {
     const turn = params.turn;
     if (!turn?.id) return;
+
+    const completedItems = this.completedItems.get(turn.id) ?? [];
+    const streamedMessages = [...(this.messageDeltas.get(turn.id)?.values() ?? [])]
+      .filter(Boolean)
+      .map((text) => ({ type: 'agentMessage', text }));
+    const turnItems = turn.items ?? [];
+    const containsAgentMessage = [...turnItems, ...completedItems].some((item) => item.type === 'agentMessage');
+    turn.items = containsAgentMessage ? [...turnItems, ...completedItems] : [...turnItems, ...completedItems, ...streamedMessages];
+    this.completedItems.delete(turn.id);
+    this.messageDeltas.delete(turn.id);
 
     const waiter = this.turnWaiters.get(turn.id);
     if (!waiter) {
