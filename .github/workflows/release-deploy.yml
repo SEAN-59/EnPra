@@ -108,7 +108,7 @@ jobs:
 
       - name: Pull release image and restart EnPra
         env:
-          COMPOSE_PATH: ${{ vars.COMPOSE_PATH }}
+          COMPOSE_PATH: ${{ vars.COMPOSE_PATH || secrets.COMPOSE_PATH }}
           IMAGE: ${{ needs.build-and-push.outputs.image }}
           VERSION: ${{ needs.validate-release.outputs.version }}
           SSH_HOST: ${{ secrets.SSH_HOST }}
