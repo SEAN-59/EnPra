@@ -32,7 +32,7 @@ export default async function Home() {
           <p className="text-sm font-semibold tracking-wide text-[#d76a47]">TODAY&apos;S ENGLISH, YOUR WORDS</p>
           <h1 className="mt-4 max-w-3xl font-serif text-5xl leading-[1.04] tracking-tight sm:text-6xl">영어를,<br />매일 한 문장씩.</h1>
           <p className="mt-6 max-w-xl text-lg leading-8 text-[#5e6965]">EnPra는 짧게 쓰고, 차분하게 돌아보며 영어를 내 것으로 만드는 개인 연습 공간입니다.</p>
-          <div className="mt-9 flex flex-col items-start gap-2">
+          <div className="mt-9 flex flex-col items-end gap-2 self-end text-right">
             <Button asChild size="lg" className="h-12 rounded-xl bg-[#1d2935] px-6 text-[#fffdf8] hover:bg-[#344451]"><a href={signInHref}>ChatGPT로 학습 시작 <Sparkles className="size-4" data-icon="inline-end" aria-hidden="true" /></a></Button>
             <span className="text-xs text-[#727a76]">별도 회원가입 없이 시작하세요.</span>
           </div>
