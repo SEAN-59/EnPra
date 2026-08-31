@@ -23,7 +23,7 @@ export default async function Home() {
             <span className="grid size-10 place-items-center rounded-xl bg-[#1d2935] text-[#f7f4ed]"><BookOpen className="size-5" aria-hidden="true" /></span>
             <span><span className="block font-serif text-xl leading-none tracking-tight">EnPra</span><span className="mt-1 block text-[10px] font-semibold tracking-[0.18em] text-[#727a76] uppercase">English practice</span></span>
           </div>
-          <a href={signInHref} className="text-sm font-semibold text-[#44514e] hover:text-[#1d2935]">ChatGPT로 로그인</a>
+          <a href={signInHref} className="ml-auto inline-flex shrink-0 whitespace-nowrap text-sm font-semibold text-[#44514e] hover:text-[#1d2935]">ChatGPT로 로그인</a>
         </div>
       </header>
 
