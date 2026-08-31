@@ -43,6 +43,7 @@ class CodexAppServer {
   private readonly pending = new Map<number, PendingRequest>();
   private readonly completedTurns = new Map<string, CompletedTurn>();
   private readonly turnWaiters = new Map<string, TurnWaiter>();
+  private readonly initialization: Promise<void>;
   private buffer = '';
   private nextId = 1;
   private readonly workspace: string;
@@ -65,6 +66,12 @@ class CodexAppServer {
         reject(new Error('Codex app server stopped.'));
       }
       this.turnWaiters.clear();
+    });
+    this.initialization = this.request('initialize', {
+      clientInfo: { name: 'enpra-bridge', title: 'EnPra', version: '0.2.0' },
+      capabilities: { experimentalApi: false, requestAttestation: false },
+    }).then(() => {
+      this.child.stdin.write(`${JSON.stringify({ method: 'initialized' })}\n`);
     });
   }
 
@@ -141,6 +148,7 @@ class CodexAppServer {
   }
 
   async startDeviceLogin(): Promise<DeviceLogin> {
+    await this.initialization;
     const result = (await this.request('account/login/start', { type: 'chatgptDeviceCode' })) as {
       loginId?: string; userCode?: string; verificationUrl?: string; type?: string;
     };
@@ -151,13 +159,18 @@ class CodexAppServer {
   }
 
   async readAccount(): Promise<CodexAccount | null> {
+    await this.initialization;
     const result = (await this.request('account/read', { refreshToken: false })) as { account?: CodexAccount | null };
     return result.account ?? null;
   }
 
-  async logout() { await this.request('account/logout'); }
+  async logout() {
+    await this.initialization;
+    await this.request('account/logout');
+  }
 
   async runLearningPrompt(prompt: string): Promise<CodexCompletion> {
+    await this.initialization;
     const startedThread = (await this.request('thread/start', {
       cwd: this.workspace,
       approvalPolicy: 'never',
