@@ -38,7 +38,7 @@ export function VocaSettings() {
 
   return (
     <>
-      <button type="button" aria-label="VOCA 학습 설정 열기" aria-expanded={open} onClick={() => setOpen(true)} className="mt-1 grid size-9 shrink-0 place-items-center rounded-lg border border-[#d8d0c3] bg-[#fffdf8] text-[#596560] hover:bg-[#eee9df]"><Settings2 className="size-4" aria-hidden="true" /></button>
+      <button type="button" aria-label="VOCA 학습 설정 열기" aria-expanded={open} onClick={() => setOpen(true)} className="grid size-9 shrink-0 place-items-center rounded-lg border border-[#d8d0c3] bg-[#fffdf8] text-[#596560] hover:bg-[#eee9df]"><Settings2 className="size-4" aria-hidden="true" /></button>
 
       {open && <button type="button" aria-label="VOCA 학습 설정 닫기" onClick={() => setOpen(false)} className="fixed inset-0 z-40 bg-[#1d2935]/25 backdrop-blur-[1px]" />}
       <aside aria-label="VOCA 학습 설정" className={`fixed inset-y-0 right-0 z-50 flex w-[min(25rem,calc(100vw-1.5rem))] flex-col border-l border-[#dcd6ca] bg-[#fffdf8] p-5 shadow-[-16px_0_45px_rgba(29,41,53,0.14)] transition-transform duration-200 ${open ? 'translate-x-0' : 'translate-x-full'}`}>
