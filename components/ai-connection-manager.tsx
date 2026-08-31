@@ -10,6 +10,12 @@ type Connection = { status: 'pending' | 'active' | 'disconnected' | 'error'; pla
 type DeviceLogin = { verificationUrl: string; userCode: string };
 type ConnectionResponse = { connection?: Connection | null; error?: string };
 
+async function readApiResponse<T>(response: Response): Promise<T & { error?: string }> {
+  const text = await response.text();
+  try { return JSON.parse(text) as T & { error?: string }; }
+  catch { return { error: text || `요청이 실패했습니다. (${response.status})` } as T & { error?: string }; }
+}
+
 export function AIConnectionManager() {
   const [connection, setConnection] = useState<Connection | null>(null);
   const [login, setLogin] = useState<DeviceLogin | null>(null);
@@ -22,7 +28,7 @@ export function AIConnectionManager() {
 
   async function readConnection() {
     const response = await fetch('/api/ai-connection', { cache: 'no-store' });
-    const result = await response.json() as ConnectionResponse;
+    const result = await readApiResponse<ConnectionResponse>(response);
     if (!response.ok) throw new Error(result.error ?? '연결 상태를 확인할 수 없습니다.');
     setConnection(result.connection ?? null);
     return result.connection ?? null;
@@ -42,7 +48,7 @@ export function AIConnectionManager() {
     setSubmitting(true); setMessage('');
     try {
       const response = await fetch('/api/ai-connection', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'start' }) });
-      const result = await response.json() as DeviceLogin & ConnectionResponse;
+      const result = await readApiResponse<DeviceLogin & ConnectionResponse>(response);
       if (!response.ok || !result.verificationUrl || !result.userCode) throw new Error(result.error ?? 'ChatGPT 연결을 시작할 수 없습니다.');
       setConnection({ status: 'pending' });
       setLogin({ verificationUrl: result.verificationUrl, userCode: result.userCode });
@@ -56,7 +62,7 @@ export function AIConnectionManager() {
     try {
       const response = await fetch('/api/ai-connection', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'disconnect' }) });
       if (!response.ok) {
-        const result = await response.json() as ConnectionResponse;
+        const result = await readApiResponse<ConnectionResponse>(response);
         throw new Error(result.error ?? '연결을 해제할 수 없습니다.');
       }
       setConnection({ status: 'disconnected' });
@@ -72,7 +78,7 @@ export function AIConnectionManager() {
     setTesting(true); setMessage(''); setTestAnswer('');
     try {
       const response = await fetch('/api/ai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ input }) });
-      const result = await response.json() as { text?: string; error?: string };
+      const result = await readApiResponse<{ text?: string; error?: string }>(response);
       if (!response.ok || !result.text) throw new Error(result.error ?? 'AI 응답을 받지 못했습니다.');
       setTestAnswer(result.text);
     } catch (error) {

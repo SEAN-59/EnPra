@@ -30,7 +30,9 @@ export async function POST(request: NextRequest) {
         'Content-Type': 'application/json',
         'X-EnPra-Service-Token': bridgeServiceToken,
         'X-EnPra-User-Id': user.userId,
-        'X-EnPra-User-Name': user.displayName,
+        // HTTP header values must be ASCII. The display name can contain Korean,
+        // so encode it before it leaves the Sites worker.
+        'X-EnPra-User-Name': encodeURIComponent(user.displayName),
       },
       body,
     });

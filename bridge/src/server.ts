@@ -97,6 +97,10 @@ function learningPrompt(input: string, context?: string) {
   ].filter(Boolean).join('\n\n');
 }
 
+function decodeDisplayName(value: string) {
+  try { return decodeURIComponent(value); } catch { return value; }
+}
+
 const app = new Hono<{ Variables: Variables }>();
 
 app.use('*', cors({
@@ -114,7 +118,8 @@ app.use('/api/*', async (c, next) => {
   if (!isExpectedToken(c.req.header('X-EnPra-Service-Token'))) return c.json({ error: 'Unauthorized bridge request.' }, 401);
 
   const id = c.req.header('X-EnPra-User-Id')?.trim();
-  const displayName = c.req.header('X-EnPra-User-Name')?.trim();
+  const encodedDisplayName = c.req.header('X-EnPra-User-Name')?.trim();
+  const displayName = encodedDisplayName ? decodeDisplayName(encodedDisplayName).trim() : undefined;
   if (!id || id.length > 256 || !displayName || displayName.length > 256) {
     return c.json({ error: 'A trusted EnPra user identity is required.' }, 400);
   }
