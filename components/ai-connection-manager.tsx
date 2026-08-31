@@ -99,5 +99,6 @@ export function AIConnectionManager() {
       {message && <p className="mt-5 rounded-lg bg-[#f9e8e1] px-3 py-2 text-sm text-[#a9492b]" role="alert">{message}</p>}
       {!pending && <Button type="button" onClick={startConnection} disabled={submitting} className="mt-7 h-11 w-full rounded-xl bg-[#1d2935] text-[#fffdf8] hover:bg-[#344451]">{submitting && <LoaderCircle className="size-4 animate-spin" />}ChatGPT 연결하기</Button>}
     </>}
+    {message && connected && <p className="mt-4 rounded-lg bg-[#f9e8e1] px-3 py-2 text-sm text-[#a9492b]" role="alert">{message}</p>}
   </section></main>;
 }

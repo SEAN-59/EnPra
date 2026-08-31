@@ -208,6 +208,10 @@ app.post('/api/ai/respond', async (c) => {
     const result = await codex.get(user.id).runLearningPrompt(learningPrompt(input, context));
     return c.json(result);
   } catch (error) {
+    console.error('EnPra AI request failed', {
+      userId: user.id,
+      message: error instanceof Error ? error.message : String(error),
+    });
     await markConnection(user.id, 'error');
     return c.json({ error: error instanceof Error ? error.message : 'AI 학습 요청에 실패했습니다.' }, 502);
   }
