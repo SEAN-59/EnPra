@@ -372,7 +372,7 @@ export function VocaListBoard() {
                 window.history.replaceState(null, "", "/voca/list");
               }}
               aria-label="단어 목록으로 돌아가기"
-              className="grid size-10 shrink-0 place-items-center rounded-xl border border-[#ded7ca] bg-[#fffdf8] text-[#52605b] transition-transform hover:bg-[#f4f0e8] active:scale-95"
+              className="inline-flex shrink-0 items-center text-[#596560] transition-colors hover:text-[#d76a47]"
             >
               <ArrowLeft className="size-4" aria-hidden="true" />
             </button>
@@ -414,16 +414,25 @@ export function VocaListBoard() {
                 key={item.id}
                 className="grid grid-cols-[minmax(0,.9fr)_minmax(0,1.1fr)] items-center gap-3 border-b border-[#e7e0d5] px-5 py-5 last:border-b-0 sm:gap-8 sm:px-7"
               >
-                <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+                <div className="flex min-w-0 items-start gap-2 sm:gap-3">
                   <span className="w-4 shrink-0 text-xs font-semibold text-[#a3aaa5] sm:w-5">
                     {index + 1}
                   </span>
-                  <FittedWord
-                    word={item.word}
-                    pronunciationIpa={item.pronunciationIpa}
-                  />
+                  <div className="min-w-0 flex-1">
+                    <FittedWord
+                      word={item.word}
+                      pronunciationIpa={item.pronunciationIpa}
+                    />
+                    <div className="mt-3 flex justify-center">
+                      <WordStatusButtons
+                        word={item}
+                        pending={statusWordId === item.id}
+                        onChange={(changes) => void updateWordStatus(item, changes)}
+                      />
+                    </div>
+                  </div>
                 </div>
-                <div className="flex self-stretch items-start justify-between gap-2 border-l border-[#e9e1d6] pl-3 text-sm leading-6 text-[#59645e] sm:gap-4 sm:pl-7 sm:text-base sm:leading-7">
+                <div className="self-stretch border-l border-[#e9e1d6] pl-3 text-sm leading-6 text-[#59645e] sm:pl-7 sm:text-base sm:leading-7">
                   <div className="min-w-0 flex-1">
                     {item.meanings.map((meaning, meaningIndex) => (
                       <p
@@ -441,11 +450,6 @@ export function VocaListBoard() {
                       </p>
                     ))}
                   </div>
-                  <WordStatusButtons
-                    word={item}
-                    pending={statusWordId === item.id}
-                    onChange={(changes) => void updateWordStatus(item, changes)}
-                  />
                 </div>
               </article>
             ))}
