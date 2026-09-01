@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { toast } from '@/components/ui/toast';
 
 type Connection = { status: 'pending' | 'active' | 'disconnected' | 'error'; plan_type?: string | null };
 type DeviceLogin = { verificationUrl: string; userCode: string };
@@ -21,7 +22,6 @@ export function AIConnectionManager() {
   const [login, setLogin] = useState<DeviceLogin | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [message, setMessage] = useState('');
   const [testInput, setTestInput] = useState('"take part in"의 뜻과 자연스러운 예문을 알려줘.');
   const [testAnswer, setTestAnswer] = useState('');
   const [testing, setTesting] = useState(false);
@@ -35,7 +35,7 @@ export function AIConnectionManager() {
   }
 
   useEffect(() => {
-    void readConnection().catch((error: unknown) => setMessage(error instanceof Error ? error.message : '연결 상태를 확인할 수 없습니다.')).finally(() => setLoading(false));
+    void readConnection().catch((error: unknown) => toast.add({ title: '연결 상태를 확인할 수 없어요.', description: error instanceof Error ? error.message : '잠시 후 다시 시도해 주세요.', type: 'error', priority: 'high' })).finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
@@ -45,7 +45,7 @@ export function AIConnectionManager() {
   }, [connection?.status]);
 
   async function startConnection() {
-    setSubmitting(true); setMessage('');
+    setSubmitting(true);
     try {
       const response = await fetch('/api/ai-connection', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'start' }) });
       const result = await readApiResponse<DeviceLogin & ConnectionResponse>(response);
@@ -53,12 +53,12 @@ export function AIConnectionManager() {
       setConnection({ status: 'pending' });
       setLogin({ verificationUrl: result.verificationUrl, userCode: result.userCode });
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : '다시 시도해 주세요.');
+      toast.add({ title: 'ChatGPT 연결을 시작하지 못했어요.', description: error instanceof Error ? error.message : '다시 시도해 주세요.', type: 'error', priority: 'high' });
     } finally { setSubmitting(false); }
   }
 
   async function disconnect() {
-    setSubmitting(true); setMessage('');
+    setSubmitting(true);
     try {
       const response = await fetch('/api/ai-connection', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'disconnect' }) });
       if (!response.ok) {
@@ -67,22 +67,23 @@ export function AIConnectionManager() {
       }
       setConnection({ status: 'disconnected' });
       setLogin(null);
+      toast.add({ title: 'ChatGPT 연결을 해제했어요.', type: 'success' });
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : '다시 시도해 주세요.');
+      toast.add({ title: '연결을 해제하지 못했어요.', description: error instanceof Error ? error.message : '다시 시도해 주세요.', type: 'error', priority: 'high' });
     } finally { setSubmitting(false); }
   }
 
   async function runTest() {
     const input = testInput.trim();
     if (!input) return;
-    setTesting(true); setMessage(''); setTestAnswer('');
+    setTesting(true); setTestAnswer('');
     try {
       const response = await fetch('/api/ai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ input }) });
       const result = await readApiResponse<{ text?: string; error?: string }>(response);
       if (!response.ok || !result.text) throw new Error(result.error ?? 'AI 응답을 받지 못했습니다.');
       setTestAnswer(result.text);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : '다시 시도해 주세요.');
+      toast.add({ title: 'AI 응답을 받지 못했어요.', description: error instanceof Error ? error.message : '다시 시도해 주세요.', type: 'error', priority: 'high' });
     } finally { setTesting(false); }
   }
 
@@ -96,9 +97,7 @@ export function AIConnectionManager() {
     <p className="mt-2 text-sm leading-relaxed text-[#68716c]">연결한 ChatGPT 계정으로 EnPra의 AI 학습 기능을 사용할 수 있습니다.</p>
     {loading ? <p className="mt-7 flex items-center gap-2 text-sm text-[#68716c]"><LoaderCircle className="size-4 animate-spin" /> 연결 상태를 확인하고 있습니다.</p> : connected ? <><div className="mt-7 rounded-2xl bg-[#e8f3eb] p-5 text-[#28533d]"><div className="flex items-center gap-2 font-semibold"><CheckCircle2 className="size-5" /> 연결됨{connection?.plan_type ? ` · ${connection.plan_type}` : ''}</div><p className="mt-2 text-sm text-[#47735d]">이제 AI가 단어 생성과 학습 피드백에 사용됩니다.</p><Button type="button" variant="ghost" disabled={submitting} onClick={disconnect} className="mt-4 h-9 px-0 text-[#8d4834] hover:bg-transparent hover:text-[#6d3324]">{submitting ? <LoaderCircle className="size-4 animate-spin" /> : <Unlink className="size-4" />}연결 해제</Button></div><section className="mt-5 rounded-2xl border border-[#d8d0c3] bg-[#f7f4ed] p-4"><p className="font-semibold">AI 응답 테스트</p><p className="mt-1 text-xs leading-5 text-[#68716c]">연결된 내 Codex 계정으로 실제 학습 요청을 한 번 보냅니다.</p><Textarea value={testInput} onChange={(event) => setTestInput(event.target.value)} className="mt-4 min-h-24 resize-none border-[#d8d0c3] bg-[#fffefa] text-sm" /><Button type="button" disabled={testing || !testInput.trim()} onClick={runTest} className="mt-3 h-10 w-full rounded-xl bg-[#1d2935] text-[#fffdf8] hover:bg-[#344451]">{testing && <LoaderCircle className="size-4 animate-spin" />}AI에게 보내기</Button>{testAnswer && <pre className="mt-4 whitespace-pre-wrap rounded-xl bg-[#fffdf8] p-3 font-sans text-sm leading-6 text-[#35433e]">{testAnswer}</pre>}</section></> : <>
       {pending && login && <div className="mt-7 rounded-2xl border border-[#d8d0c3] bg-[#f7f4ed] p-5"><p className="text-sm font-semibold">1. 아래 주소를 열고 ChatGPT에 로그인하세요.</p><a className="mt-2 block break-all text-sm font-medium text-[#d76a47] underline" href={login.verificationUrl} target="_blank" rel="noreferrer">{login.verificationUrl}</a><p className="mt-5 text-sm font-semibold">2. 이 코드를 입력하세요.</p><p className="mt-2 rounded-xl bg-[#1d2935] px-4 py-3 text-center font-mono text-xl tracking-[0.18em] text-[#f7f4ed]">{login.userCode}</p><p className="mt-4 flex items-center gap-2 text-xs text-[#68716c]"><LoaderCircle className="size-3.5 animate-spin" />로그인 완료를 확인하고 있습니다.</p></div>}
-      {message && <p className="mt-5 rounded-lg bg-[#f9e8e1] px-3 py-2 text-sm text-[#a9492b]" role="alert">{message}</p>}
       {!pending && <Button type="button" onClick={startConnection} disabled={submitting} className="mt-7 h-11 w-full rounded-xl bg-[#1d2935] text-[#fffdf8] hover:bg-[#344451]">{submitting && <LoaderCircle className="size-4 animate-spin" />}ChatGPT 연결하기</Button>}
     </>}
-    {message && connected && <p className="mt-4 rounded-lg bg-[#f9e8e1] px-3 py-2 text-sm text-[#a9492b]" role="alert">{message}</p>}
   </section></main>;
 }

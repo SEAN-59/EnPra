@@ -2,6 +2,7 @@
 
 import { ArrowLeft, BookOpenCheck, ChevronRight, ListChecks } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { toast } from '@/components/ui/toast';
 
 type VocabularyList = {
   id: number;
@@ -55,11 +56,9 @@ export function VocaListBoard() {
   const [words, setWords] = useState<VocabularyWord[]>([]);
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
 
   async function selectList(list: VocabularyList) {
     setDetailLoading(true);
-    setMessage(null);
     try {
       const response = await fetch(`/api/vocabulary/list/${list.id}`, { cache: 'no-store' });
       const result = await readResponse<DetailResponse>(response);
@@ -68,7 +67,7 @@ export function VocaListBoard() {
       setWords(result.words ?? []);
       window.history.replaceState(null, '', `/voca/list?list=${list.id}`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : '단어 목록을 불러오지 못했습니다.');
+      toast.add({ title: '단어 목록을 불러오지 못했어요.', description: error instanceof Error ? error.message : '잠시 후 다시 시도해 주세요.', type: 'error', priority: 'high' });
     } finally {
       setDetailLoading(false);
     }
@@ -87,7 +86,7 @@ export function VocaListBoard() {
         const requestedList = nextLists.find((list) => list.id === requestedId);
         if (requestedList) void selectList(requestedList);
       })
-      .catch((error) => { if (active) setMessage(error instanceof Error ? error.message : '단어 목록을 불러오지 못했습니다.'); })
+      .catch((error) => { if (active) toast.add({ title: '단어 목록을 불러오지 못했어요.', description: error instanceof Error ? error.message : '잠시 후 다시 시도해 주세요.', type: 'error', priority: 'high' }); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, []);
@@ -108,7 +107,6 @@ export function VocaListBoard() {
     <section className="mt-7 max-w-3xl" aria-labelledby="saved-list-title">
       <div className="mb-4 flex items-center gap-2"><ListChecks className="size-4 text-[#d76a47]" aria-hidden="true" /><h2 id="saved-list-title" className="font-serif text-2xl">저장된 단어 리스트</h2></div>
       {loading ? <p className="rounded-2xl border border-[#ded7ca] bg-[#fffdf8] px-5 py-10 text-center text-sm text-[#77807a]">목록을 불러오는 중입니다.</p> : lists.length ? <div className="space-y-3">{lists.map((list) => <button key={list.id} type="button" onClick={() => void selectList(list)} className="flex w-full items-center gap-4 rounded-2xl border border-[#ded7ca] bg-[#fffdf8] p-4 text-left shadow-[0_8px_20px_rgba(35,44,43,0.035)] transition-colors hover:border-[#e6b7a5] hover:bg-[#fff8f4]"><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#e8f0eb] text-[#38634f]"><BookOpenCheck className="size-5" aria-hidden="true" /></span><span className="min-w-0 flex-1"><span className="flex items-center gap-2"><span className="truncate font-semibold">{list.title}</span><span className="shrink-0 text-xs text-[#8a918b]">{list.scope === 'common' ? '공통' : '개인'}</span></span><span className="mt-1 block text-sm text-[#6e7772]">{list.wordCount}개</span></span><ChevronRight className="size-4 shrink-0 text-[#929993]" aria-hidden="true" /></button>)}</div> : <div className="rounded-3xl border border-dashed border-[#d8d0c3] bg-[#fbf9f4] px-6 py-12 text-center"><BookOpenCheck className="mx-auto size-6 text-[#9ba39d]" aria-hidden="true" /><p className="mt-4 font-semibold text-[#52605b]">아직 불러온 단어 목록이 없습니다.</p><p className="mt-2 text-sm leading-6 text-[#7a827d]">VOCA 상단의 + 버튼에서 공통 목록을 추가하거나, 개인 단어 목록을 만들어 보세요.</p></div>}
-      {message && <p role="alert" className="mt-4 rounded-xl bg-[#f9e8e1] px-3 py-2 text-sm text-[#a9492b]">{message}</p>}
     </section>
   );
 }
