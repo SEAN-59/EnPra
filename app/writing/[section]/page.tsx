@@ -22,7 +22,17 @@ export default async function WritingSectionPage({ params }: { params: Promise<{
 
   return (
     <AppShell activeSection="WRITING" displayName={user.displayName} signOutHref={chatGPTSignOutPath(`/writing/${section}`)}>
-      <section className="min-w-0"><WritingHeader /><div className="mt-9"><WritingSubnav activeItem={current.activeItem} /></div><section className="mt-7 rounded-3xl border border-dashed border-[#d7cfc2] bg-[#fbf9f4] px-6 py-16 text-center sm:px-10"><span className="mx-auto grid size-12 place-items-center rounded-2xl bg-[#fffdf8] text-[#d76a47]"><PenLine className="size-5" aria-hidden="true" /></span><p className="mt-5 text-xs font-bold tracking-[0.14em] text-[#d76a47]">WRITING</p><h2 className="mt-2 font-serif text-3xl">{current.title}</h2><p className="mx-auto mt-3 max-w-md text-sm leading-6 text-[#707873]">{current.description}</p><a href="/writing" className="mt-7 inline-flex items-center gap-2 rounded-xl border border-[#d8d0c3] bg-[#fffdf8] px-4 py-2.5 text-sm font-semibold text-[#596560] hover:bg-[#f1ede5]"><ArrowLeft className="size-4" aria-hidden="true" />Board로 돌아가기</a></section></section>
+      <section className="min-w-0">
+        <WritingHeader />
+        <div className="mt-9"><WritingSubnav activeItem={current.activeItem} /></div>
+        <section className="mt-7 rounded-3xl border border-dashed border-[#d7cfc2] bg-[#fbf9f4] px-6 py-16 text-center sm:px-10">
+          <span className="mx-auto grid size-12 place-items-center rounded-2xl bg-[#fffdf8] text-[#d76a47]"><PenLine className="size-5" aria-hidden="true" /></span>
+          <p className="mt-5 text-xs font-bold tracking-[0.14em] text-[#d76a47]">WRITING</p>
+          <h2 className="mt-2 font-serif text-3xl">{current.title}</h2>
+          <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-[#707873]">{current.description}</p>
+          <a href="/writing" className="mt-7 inline-flex items-center gap-2 text-sm font-semibold text-[#596560] transition-colors hover:text-[#d76a47]"><ArrowLeft className="size-4" aria-hidden="true" />Board로 돌아가기</a>
+        </section>
+      </section>
     </AppShell>
   );
 }
