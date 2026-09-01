@@ -213,6 +213,8 @@ class CodexAppServer {
     await this.initialization;
     const startedThread = (await this.request('thread/start', {
       cwd: this.workspace,
+      model: 'gpt-5.6-luna',
+      serviceTier: 'priority',
       approvalPolicy: 'never',
       sandbox: 'read-only',
       ephemeral: true,
@@ -227,6 +229,9 @@ class CodexAppServer {
 
     const startedTurn = (await this.request('turn/start', {
       threadId,
+      model: 'gpt-5.6-luna',
+      effort: 'high',
+      serviceTier: 'priority',
       input: [{ type: 'text', text: prompt, text_elements: [] }],
       approvalPolicy: 'never',
       sandboxPolicy: { type: 'readOnly', networkAccess: false },
