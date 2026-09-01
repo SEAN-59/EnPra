@@ -27,7 +27,7 @@ type GeneratedVocabularyWord = {
   pronunciationIpa: string;
   senses: Array<{ partOfSpeech: string; text: string }>;
 };
-type AIVocabularyGenerationResult = { listId: number; addedCount: number; attempts: number; partial: boolean };
+type AIVocabularyGenerationResult = { listId: number; addedCount: number; attempts: number };
 type AIVocabularyGenerationJob = {
   id: string;
   userId: string;
@@ -261,7 +261,7 @@ function vocabularyGenerationPrompt(count: number, excludedWords: string[]) {
     '반드시 아래 JSON 객체만 반환하세요. 마크다운, 설명, 코드 블록은 절대 쓰지 마세요.',
     '{"words":[{"word":"example","pronunciationIpa":"[ɪɡˈzæmpəl]","senses":[{"partOfSpeech":"n","text":"예시, 사례"}]}]}',
     'partOfSpeech는 n, v, a, ad, prep, phrase, conj 중 하나만 사용합니다. 뜻은 자연스러운 한국어로 작성하세요.',
-    excludedWords.length ? `다음 단어는 이미 이번 목록에 포함했으니 절대로 다시 제안하지 마세요: ${excludedWords.join(', ')}` : null,
+    excludedWords.length ? `다음 단어는 이미 저장되었거나 중복 후보로 제외되었으니 절대로 다시 제안하지 마세요: ${excludedWords.join(', ')}` : null,
   ].filter(Boolean).join('\n');
 }
 
@@ -524,6 +524,7 @@ app.post('/api/vocabulary/lists/manual-entries', async (c) => {
 
 async function generateAIVocabulary(user: UserContext, count: number, job: AIVocabularyGenerationJob): Promise<AIVocabularyGenerationResult> {
   const selected = new Map<string, GeneratedVocabularyWord>();
+  const excludedWords = new Set<string>();
   let attempts = 0;
   let lastError: Error | null = null;
   while (selected.size < count && attempts < 5) {
@@ -531,18 +532,21 @@ async function generateAIVocabulary(user: UserContext, count: number, job: AIVoc
     job.attempts = attempts;
     job.updatedAt = Date.now();
     try {
+      const remaining = count - selected.size;
+      const candidateCount = Math.min(Math.max(remaining * 2, 20), 50);
       const completion = await codex.get(user.id).runLearningPrompt(
-        vocabularyGenerationPrompt(count - selected.size, [...selected.values()].map((word) => word.word).slice(-120)),
+        vocabularyGenerationPrompt(candidateCount, [...excludedWords].slice(-250)),
       );
-      const candidates = parseGeneratedVocabulary(completion.text)
-        .filter((word) => !selected.has(word.normalizedWord));
-      if (!candidates.length) continue;
+      const candidates = parseGeneratedVocabulary(completion.text);
+      for (const word of candidates) excludedWords.add(word.word);
+      const uniqueCandidates = candidates.filter((word) => !selected.has(word.normalizedWord));
+      if (!uniqueCandidates.length) continue;
       const existing = await pool.query<{ normalized_word: string }>(
         'SELECT normalized_word FROM vocabulary_words WHERE normalized_word = ANY($1::text[])',
-        [candidates.map((word) => word.normalizedWord)],
+        [uniqueCandidates.map((word) => word.normalizedWord)],
       );
       const existingWords = new Set(existing.rows.map((word) => word.normalized_word));
-      for (const word of candidates) {
+      for (const word of uniqueCandidates) {
         if (!existingWords.has(word.normalizedWord) && selected.size < count) selected.set(word.normalizedWord, word);
       }
     } catch (error) {
@@ -550,9 +554,9 @@ async function generateAIVocabulary(user: UserContext, count: number, job: AIVoc
     }
   }
 
-  if (!selected.size) {
-    await markConnection(user.id, 'error');
-    throw lastError ?? new Error('중복되지 않는 새 단어를 찾지 못했습니다. 잠시 후 다시 시도해 주세요.');
+  if (selected.size < count) {
+    if (!selected.size && lastError) throw lastError;
+    throw new Error(`요청한 ${count}개 중 새 단어 ${selected.size}개만 확보했습니다. 불완전한 목록은 저장하지 않았습니다.`);
   }
 
   const client = await pool.connect();
@@ -588,7 +592,7 @@ async function generateAIVocabulary(user: UserContext, count: number, job: AIVoc
       sortOrder += 1;
     }
     await client.query('COMMIT');
-    return { listId, addedCount: selected.size, attempts, partial: selected.size < count };
+    return { listId, addedCount: selected.size, attempts };
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('AI vocabulary generation storage failed', { userId: user.id, message: error instanceof Error ? error.message : String(error) });
