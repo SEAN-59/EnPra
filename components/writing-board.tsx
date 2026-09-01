@@ -4,6 +4,7 @@ import { ArrowRight, Compass, Sparkles, X } from 'lucide-react';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { useDocumentScrollLock } from '@/components/use-document-scroll-lock';
 
 const levelChoices = [
   { level: 'FOUNDATION', description: '기본 문장 구조부터 바로 학습을 시작합니다.', href: '/writing/learning?level=foundation' },
@@ -14,6 +15,7 @@ const levelChoices = [
 
 export function WritingBoard() {
   const [levelDialogOpen, setLevelDialogOpen] = useState(false);
+  useDocumentScrollLock(levelDialogOpen);
 
   return (
     <section className="mt-7" aria-labelledby="writing-board-title">

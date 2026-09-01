@@ -3,6 +3,7 @@
 import { BookOpenCheck, ClipboardPaste, FilePenLine, FolderOpen, Plus, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from '@/components/ui/toast';
+import { useDocumentScrollLock } from '@/components/use-document-scroll-lock';
 
 type VocabularyList = {
   id: number;
@@ -26,6 +27,7 @@ export function VocaAddMenu() {
   const [savedLists, setSavedLists] = useState<VocabularyList[]>([]);
   const [catalogLists, setCatalogLists] = useState<VocabularyList[]>([]);
   const [loading, setLoading] = useState(false);
+  useDocumentScrollLock(menuOpen || libraryOpen);
 
   useEffect(() => {
     if (!libraryOpen) return;

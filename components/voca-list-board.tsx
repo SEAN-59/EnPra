@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "@/components/ui/toast";
+import { useDocumentScrollLock } from "@/components/use-document-scroll-lock";
 
 type VocabularyList = {
   id: number;
@@ -190,6 +191,7 @@ export function VocaListBoard() {
   const [listMenuId, setListMenuId] = useState<number | null>(null);
   const [removingListId, setRemovingListId] = useState<number | null>(null);
   const [statusWordId, setStatusWordId] = useState<number | null>(null);
+  useDocumentScrollLock(listMenuId !== null);
 
   async function selectList(list: VocabularyList) {
     setDetailLoading(true);

@@ -5,6 +5,7 @@ import { ArrowUpRight, BookOpen, Headphones, LogOut, Menu, Mic, PenLine, SpellCh
 import { useState, type ReactNode } from 'react';
 
 import { AIConnectionStatus } from '@/components/ai-connection-status';
+import { useDocumentScrollLock } from '@/components/use-document-scroll-lock';
 
 type AppSection = 'HOME' | 'VOCA' | 'READING' | 'LISTENING' | 'WRITING' | 'SPEAKING';
 
@@ -38,6 +39,7 @@ function NavigationLinks({ activeSection, closeMenu }: { activeSection: AppSecti
 export function AppShell({ activeSection, children, displayName, signOutHref }: AppShellProps) {
   const [accountDrawerOpen, setAccountDrawerOpen] = useState(false);
   const [leftDrawerOpen, setLeftDrawerOpen] = useState(false);
+  useDocumentScrollLock(leftDrawerOpen || accountDrawerOpen);
 
   return (
     <main className="min-h-screen bg-[#f7f4ed] text-[#1d2935]">

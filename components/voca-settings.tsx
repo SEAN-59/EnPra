@@ -4,6 +4,7 @@ import { ChevronDown, ChevronUp, RotateCcw, Settings2, X } from 'lucide-react';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { useDocumentScrollLock } from '@/components/use-document-scroll-lock';
 
 const testTypes = [
   { id: 'word', label: '영단어 맞추기', ratio: 40 },
@@ -25,6 +26,7 @@ export function VocaSettings() {
   const [generationCount, setGenerationCount] = useState(20);
   const [testCounts, setTestCounts] = useState<Record<TestType, number>>(() => defaultTestCounts(20));
   const [autoTestCounts, setAutoTestCounts] = useState(true);
+  useDocumentScrollLock(open);
 
   function updateGenerationCount(value: number) {
     setGenerationCount(value);
