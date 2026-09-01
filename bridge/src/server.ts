@@ -27,7 +27,7 @@ type GeneratedVocabularyWord = {
   pronunciationIpa: string;
   senses: Array<{ partOfSpeech: string; text: string }>;
 };
-type AIVocabularyGenerationResult = { listId: number; addedCount: number; attempts: number };
+type AIVocabularyGenerationResult = { listId: number; addedCount: number; attempts: number; partial: boolean };
 type AIVocabularyGenerationJob = {
   id: string;
   userId: string;
@@ -524,7 +524,10 @@ app.post('/api/vocabulary/lists/manual-entries', async (c) => {
 
 async function generateAIVocabulary(user: UserContext, count: number, job: AIVocabularyGenerationJob): Promise<AIVocabularyGenerationResult> {
   const selected = new Map<string, GeneratedVocabularyWord>();
-  const excludedWords = new Set<string>();
+  const knownVocabulary = await pool.query<{ normalized_word: string }>(
+    'SELECT normalized_word FROM vocabulary_words ORDER BY normalized_word',
+  );
+  const excludedWords = new Set(knownVocabulary.rows.map((word) => word.normalized_word));
   let attempts = 0;
   let lastError: Error | null = null;
   while (selected.size < count && attempts < 5) {
@@ -535,10 +538,10 @@ async function generateAIVocabulary(user: UserContext, count: number, job: AIVoc
       const remaining = count - selected.size;
       const candidateCount = Math.min(Math.max(remaining * 2, 20), 50);
       const completion = await codex.get(user.id).runLearningPrompt(
-        vocabularyGenerationPrompt(candidateCount, [...excludedWords].slice(-250)),
+        vocabularyGenerationPrompt(candidateCount, [...excludedWords].slice(-1_000)),
       );
       const candidates = parseGeneratedVocabulary(completion.text);
-      for (const word of candidates) excludedWords.add(word.word);
+      for (const word of candidates) excludedWords.add(word.normalizedWord);
       const uniqueCandidates = candidates.filter((word) => !selected.has(word.normalizedWord));
       if (!uniqueCandidates.length) continue;
       const existing = await pool.query<{ normalized_word: string }>(
@@ -555,8 +558,7 @@ async function generateAIVocabulary(user: UserContext, count: number, job: AIVoc
   }
 
   if (selected.size < count) {
-    if (!selected.size && lastError) throw lastError;
-    throw new Error(`요청한 ${count}개 중 새 단어 ${selected.size}개만 확보했습니다. 불완전한 목록은 저장하지 않았습니다.`);
+    if (!selected.size) throw lastError ?? new Error('중복되지 않는 새 단어를 찾지 못했습니다. 잠시 후 다시 시도해 주세요.');
   }
 
   const client = await pool.connect();
@@ -592,7 +594,7 @@ async function generateAIVocabulary(user: UserContext, count: number, job: AIVoc
       sortOrder += 1;
     }
     await client.query('COMMIT');
-    return { listId, addedCount: selected.size, attempts };
+    return { listId, addedCount: selected.size, attempts, partial: selected.size < count };
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('AI vocabulary generation storage failed', { userId: user.id, message: error instanceof Error ? error.message : String(error) });
