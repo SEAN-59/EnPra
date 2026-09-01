@@ -91,6 +91,22 @@ export function VocaListBoard() {
     return () => { active = false; };
   }, []);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('generated') !== '1') return;
+    const added = Number(params.get('added') ?? '0');
+    if (params.get('partial') === '1') {
+      toast.add({ title: `${added}개 단어를 저장했어요.`, description: '중복 항목이 많아 요청한 수를 모두 채우지는 못했어요.', type: 'warning' });
+    } else {
+      toast.add({ title: `${added}개 AI 단어를 저장했어요.`, description: '새 개인 단어 목록을 열었습니다.', type: 'success' });
+    }
+    params.delete('generated');
+    params.delete('added');
+    params.delete('partial');
+    const query = params.toString();
+    window.history.replaceState(null, '', `/voca/list${query ? `?${query}` : ''}`);
+  }, []);
+
   if (selected) {
     return (
       <section className="mt-7" aria-labelledby="word-list-title">

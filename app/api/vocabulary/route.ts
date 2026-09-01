@@ -67,6 +67,11 @@ export async function POST(request: NextRequest) {
     return forwardToBridge('/api/vocabulary/lists/manual-entries', 'POST', user, JSON.stringify(manualWords));
   }
 
+  if (body && typeof body === 'object' && (body as { action?: unknown }).action === 'ai-generate') {
+    const { action: _action, ...generation } = body as { action: 'ai-generate' } & Record<string, unknown>;
+    return forwardToBridge('/api/vocabulary/lists/ai-generate', 'POST', user, JSON.stringify(generation));
+  }
+
   const listId = body && typeof body === 'object' ? (body as { listId?: unknown }).listId : undefined;
 
   if (typeof listId !== 'number' || !Number.isSafeInteger(listId) || listId < 1) {
