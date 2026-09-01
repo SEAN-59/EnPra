@@ -16,6 +16,11 @@ type ManualVocabularyRequest = {
   pronunciationIpa?: unknown;
   senses?: unknown;
 };
+type ManualVocabularyBatchRequest = {
+  listId?: unknown;
+  listTitle?: unknown;
+  words?: unknown;
+};
 type VocabularyListRow = {
   id: string | number;
   title: string;
@@ -333,6 +338,131 @@ app.post('/api/vocabulary/lists/:listId/add', async (c) => {
     [user.id, listId],
   );
   return c.json({ added: true, listId });
+});
+
+app.post('/api/vocabulary/lists/manual-entries', async (c) => {
+  const user = c.get('user');
+  let body: ManualVocabularyBatchRequest;
+  try {
+    body = await c.req.json<ManualVocabularyBatchRequest>();
+  } catch {
+    return c.json({ error: '단어 입력 형식이 올바르지 않습니다.' }, 400);
+  }
+
+  const requestedListId = typeof body.listId === 'number' && Number.isSafeInteger(body.listId) && body.listId > 0 ? body.listId : null;
+  const listTitle = typeof body.listTitle === 'string' ? body.listTitle.trim() : '';
+  const allowedPartsOfSpeech = new Set(['n', 'v', 'a', 'ad', 'prep', 'phrase', 'conj']);
+  const words = Array.isArray(body.words) ? body.words.flatMap((item) => {
+    if (!item || typeof item !== 'object') return [];
+    const entry = item as { word?: unknown; pronunciationIpa?: unknown; senses?: unknown };
+    const word = typeof entry.word === 'string' ? entry.word.trim() : '';
+    const pronunciationIpa = typeof entry.pronunciationIpa === 'string' ? entry.pronunciationIpa.trim() : '';
+    const senses = Array.isArray(entry.senses) ? entry.senses.flatMap((sense) => {
+      if (!sense || typeof sense !== 'object') return [];
+      const meaning = sense as { partOfSpeech?: unknown; text?: unknown };
+      const partOfSpeech = typeof meaning.partOfSpeech === 'string' ? meaning.partOfSpeech.trim() : '';
+      const text = typeof meaning.text === 'string' ? meaning.text.trim() : '';
+      return allowedPartsOfSpeech.has(partOfSpeech) && text ? [{ partOfSpeech, text }] : [];
+    }) : [];
+    return word && pronunciationIpa && senses.length ? [{ word, pronunciationIpa, senses }] : [];
+  }) : [];
+
+  if ((!requestedListId && (!listTitle || listTitle.length > 120)) || !words.length || words.length > 100) {
+    return c.json({ error: '개인 목록을 선택하거나 이름을 입력한 뒤, 한 개 이상의 단어를 추가해 주세요.' }, 400);
+  }
+  if (words.some((entry) => entry.word.length > 120 || entry.pronunciationIpa.length > 160 || entry.senses.length > 20 || entry.senses.some((sense) => sense.text.length > 500))) {
+    return c.json({ error: '단어, 발음, 뜻의 길이를 확인해 주세요.' }, 400);
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    let listId: number;
+    if (requestedListId) {
+      const list = await client.query<{ id: string | number }>(
+        `SELECT id FROM vocabulary_lists
+         WHERE id = $1 AND owner_user_id = $2 AND scope = 'personal'`,
+        [requestedListId, user.id],
+      );
+      if (!list.rows[0]) {
+        await client.query('ROLLBACK');
+        return c.json({ error: '개인 단어 목록만 선택할 수 있습니다.' }, 404);
+      }
+      listId = Number(list.rows[0].id);
+    } else {
+      let list = await client.query<{ id: string | number }>(
+        `SELECT id FROM vocabulary_lists
+         WHERE owner_user_id = $1 AND scope = 'personal' AND list_type = 'custom' AND title = $2
+         ORDER BY id ASC LIMIT 1`,
+        [user.id, listTitle],
+      );
+      if (!list.rows[0]) {
+        list = await client.query<{ id: string | number }>(
+          `INSERT INTO vocabulary_lists (owner_user_id, scope, list_type, title)
+           VALUES ($1, 'personal', 'custom', $2) RETURNING id`,
+          [user.id, listTitle],
+        );
+      }
+      listId = Number(list.rows[0].id);
+    }
+
+    const nextItemSort = await client.query<{ next_sort: number }>(
+      `SELECT COALESCE(MAX(sort_order) + 1, 0)::INTEGER AS next_sort
+       FROM vocabulary_list_items WHERE list_id = $1`,
+      [listId],
+    );
+    let itemSort = nextItemSort.rows[0].next_sort;
+    let addedCount = 0;
+    for (const entry of words) {
+      const normalizedWord = entry.word.normalize('NFKC').toLocaleLowerCase('en-US');
+      const wordResult = await client.query<{ id: string | number }>(
+        `INSERT INTO vocabulary_words (word, normalized_word, pronunciation_ipa)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (normalized_word) DO UPDATE SET updated_at = NOW()
+         RETURNING id`,
+        [entry.word, normalizedWord, entry.pronunciationIpa],
+      );
+      const wordId = Number(wordResult.rows[0].id);
+      const currentSort = await client.query<{ next_sort: number }>(
+        `SELECT COALESCE(MAX(sort_order) + 1, 0)::INTEGER AS next_sort
+         FROM vocabulary_senses WHERE word_id = $1`,
+        [wordId],
+      );
+      let senseSort = currentSort.rows[0].next_sort;
+      for (const sense of entry.senses) {
+        const existingSense = await client.query(
+          `SELECT 1 FROM vocabulary_senses
+           WHERE word_id = $1 AND part_of_speech = $2 AND meaning_ko = $3`,
+          [wordId, sense.partOfSpeech, sense.text],
+        );
+        if (!existingSense.rowCount) {
+          await client.query(
+            `INSERT INTO vocabulary_senses (word_id, part_of_speech, meaning_ko, sort_order)
+             VALUES ($1, $2, $3, $4)`,
+            [wordId, sense.partOfSpeech, sense.text, senseSort],
+          );
+          senseSort += 1;
+        }
+      }
+      const inserted = await client.query(
+        `INSERT INTO vocabulary_list_items (list_id, word_id, sort_order)
+         VALUES ($1, $2, $3) ON CONFLICT (list_id, word_id) DO NOTHING`,
+        [listId, wordId, itemSort],
+      );
+      if (inserted.rowCount) {
+        itemSort += 1;
+        addedCount += 1;
+      }
+    }
+    await client.query('COMMIT');
+    return c.json({ listId, addedCount });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Manual vocabulary batch creation failed', { userId: user.id, message: error instanceof Error ? error.message : String(error) });
+    return c.json({ error: '단어를 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.' }, 500);
+  } finally {
+    client.release();
+  }
 });
 
 app.post('/api/vocabulary/words', async (c) => {
