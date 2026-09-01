@@ -55,6 +55,7 @@ const topics = [
   'media and communication', 'food and agriculture', 'travel and tourism', 'housing and communities',
   'research and data', 'crime and law', 'energy and natural resources', 'globalisation and development',
 ];
+const candidateBatchSize = 550;
 
 function writeLog(message: string) {
   const line = `[${new Date().toISOString()}] ${message}`;
@@ -176,13 +177,29 @@ async function ensureBuildTables(client: PoolClient) {
       word TEXT NOT NULL,
       pronunciation_ipa TEXT NOT NULL,
       difficulty_band TEXT NOT NULL CHECK (difficulty_band IN ('under_5', 'band_5', 'band_6', 'band_7_plus')),
+      build_batch INTEGER NOT NULL DEFAULT 1,
       senses JSONB NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       PRIMARY KEY (run_id, normalized_word)
     );
     CREATE INDEX IF NOT EXISTS vocabulary_build_candidates_run_band_idx
       ON vocabulary_build_candidates (run_id, difficulty_band, normalized_word);
+    ALTER TABLE vocabulary_build_candidates
+      ADD COLUMN IF NOT EXISTS build_batch INTEGER NOT NULL DEFAULT 1;
+    CREATE INDEX IF NOT EXISTS vocabulary_build_candidates_run_batch_idx
+      ON vocabulary_build_candidates (run_id, build_batch, normalized_word);
   `);
+  await client.query(`
+    WITH ordered AS (
+      SELECT run_id, normalized_word,
+             CEIL(row_number() OVER (PARTITION BY run_id ORDER BY created_at, normalized_word)::numeric / $1)::INTEGER AS build_batch
+      FROM vocabulary_build_candidates
+    )
+    UPDATE vocabulary_build_candidates candidate
+    SET build_batch = ordered.build_batch
+    FROM ordered
+    WHERE candidate.run_id = ordered.run_id AND candidate.normalized_word = ordered.normalized_word
+  `, [candidateBatchSize]);
 }
 
 async function getOrCreateRun(client: PoolClient): Promise<BuildRun> {
@@ -211,13 +228,27 @@ async function getCounts(client: PoolClient, runId: string) {
   return counts;
 }
 
-async function getExcludedWords(client: PoolClient, runId: string) {
+async function getActiveBatch(client: PoolClient, runId: string) {
+  const result = await client.query<{ build_batch: string; word_count: string }>(
+    `SELECT build_batch::text, count(*)::text
+     FROM vocabulary_build_candidates
+     WHERE run_id = $1
+     GROUP BY build_batch
+     ORDER BY build_batch`,
+    [runId],
+  );
+  const incomplete = result.rows.find((row) => Number(row.word_count) < candidateBatchSize);
+  if (incomplete) return { number: Number(incomplete.build_batch), count: Number(incomplete.word_count) };
+  return { number: result.rows.length + 1, count: 0 };
+}
+
+async function getExcludedWords(client: PoolClient, runId: string, activeBatch: number) {
   const result = await client.query<{ normalized_word: string }>(
     `SELECT normalized_word FROM vocabulary_words
      UNION
-     SELECT normalized_word FROM vocabulary_build_candidates WHERE run_id = $1
+     SELECT normalized_word FROM vocabulary_build_candidates WHERE run_id = $1 AND build_batch < $2
      ORDER BY normalized_word`,
-    [runId],
+    [runId, activeBatch],
   );
   return result.rows.map((row) => row.normalized_word);
 }
@@ -228,15 +259,15 @@ function nextBand(counts: Record<DifficultyBand, number>) {
     .sort((left, right) => (targets[right] - counts[right]) - (targets[left] - counts[left]))[0] ?? null;
 }
 
-async function saveCandidates(client: PoolClient, runId: string, candidates: VocabularyCandidate[]) {
+async function saveCandidates(client: PoolClient, runId: string, buildBatch: number, candidates: VocabularyCandidate[]) {
   let inserted = 0;
   for (const candidate of candidates) {
     const result = await client.query(
-      `INSERT INTO vocabulary_build_candidates (run_id, normalized_word, word, pronunciation_ipa, difficulty_band, senses)
-       SELECT $1, $2, $3, $4, $5, $6::jsonb
+      `INSERT INTO vocabulary_build_candidates (run_id, normalized_word, word, pronunciation_ipa, difficulty_band, build_batch, senses)
+       SELECT $1, $2, $3, $4, $5, $6, $7::jsonb
        WHERE NOT EXISTS (SELECT 1 FROM vocabulary_words WHERE normalized_word = $2)
        ON CONFLICT (run_id, normalized_word) DO NOTHING`,
-      [runId, candidate.normalizedWord, candidate.word, candidate.pronunciationIpa, candidate.difficultyBand, JSON.stringify(candidate.senses)],
+      [runId, candidate.normalizedWord, candidate.word, candidate.pronunciationIpa, candidate.difficultyBand, buildBatch, JSON.stringify(candidate.senses)],
     );
     inserted += result.rowCount ?? 0;
   }
@@ -251,26 +282,28 @@ async function buildCandidates(run: BuildRun) {
     const client = await pool.connect();
     let counts: Record<DifficultyBand, number>;
     let excludedWords: string[];
+    let activeBatch: { number: number; count: number };
     try {
       counts = await getCounts(client, run.id);
-      excludedWords = await getExcludedWords(client, run.id);
+      activeBatch = await getActiveBatch(client, run.id);
+      excludedWords = await getExcludedWords(client, run.id, activeBatch.number);
     } finally {
       client.release();
     }
     const band = nextBand(counts);
     if (!band) break;
     const remaining = targets[band] - counts[band];
-    const batchSize = Math.min(60, remaining);
+    const batchSize = Math.min(60, remaining, candidateBatchSize - activeBatch.count);
     const topic = topics[(excludedWords.length + requestNumber) % topics.length];
     requestNumber += 1;
-    writeLog(`run=${run.id} request=${requestNumber} band=${band} current=${counts[band]}/${targets[band]} ask=${batchSize} excluded=${excludedWords.length} topic=${topic}`);
+    writeLog(`run=${run.id} request=${requestNumber} poolBatch=${activeBatch.number} pool=${activeBatch.count}/${candidateBatchSize} band=${band} current=${counts[band]}/${targets[band]} ask=${batchSize} excluded=${excludedWords.length} topic=${topic}`);
     try {
       const completion = await codex.get(builderUserId!).runLearningPrompt(vocabularyPrompt(batchSize, band, topic, excludedWords));
       const candidates = parseCandidates(completion.text, band);
       const saveClient = await pool.connect();
       let inserted = 0;
       try {
-        inserted = await saveCandidates(saveClient, run.id, candidates);
+        inserted = await saveCandidates(saveClient, run.id, activeBatch.number, candidates);
       } finally {
         saveClient.release();
       }
