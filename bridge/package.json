@@ -1,9 +1,10 @@
 {
   "name": "enpra-bridge",
-  "version": "0.2.15",
+  "version": "0.2.16",
   "private": true,
   "type": "module",
   "scripts": {
+    "vocabulary:build-common": "node dist/build-common-vocabulary.js",
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
