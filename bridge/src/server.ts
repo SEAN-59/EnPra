@@ -58,6 +58,83 @@ async function initializeDatabase() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       UNIQUE (user_id, provider)
     );
+
+    CREATE TABLE IF NOT EXISTS vocabulary_words (
+      id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      word TEXT NOT NULL,
+      normalized_word TEXT NOT NULL UNIQUE,
+      pronunciation_ipa TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CHECK (char_length(trim(word)) > 0),
+      CHECK (char_length(trim(normalized_word)) > 0),
+      CHECK (char_length(trim(pronunciation_ipa)) > 0)
+    );
+
+    CREATE TABLE IF NOT EXISTS vocabulary_senses (
+      id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      word_id BIGINT NOT NULL REFERENCES vocabulary_words(id) ON DELETE CASCADE,
+      part_of_speech TEXT NOT NULL,
+      meaning_ko TEXT NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CHECK (char_length(trim(part_of_speech)) > 0),
+      CHECK (char_length(trim(meaning_ko)) > 0),
+      UNIQUE (word_id, sort_order)
+    );
+
+    CREATE TABLE IF NOT EXISTS vocabulary_lists (
+      id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      owner_user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+      scope TEXT NOT NULL CHECK (scope IN ('common', 'personal')),
+      list_type TEXT NOT NULL CHECK (list_type IN ('daily', 'custom', 'ai_generated')),
+      title TEXT NOT NULL,
+      learning_date DATE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CHECK (char_length(trim(title)) > 0),
+      CHECK (
+        (scope = 'common' AND owner_user_id IS NULL)
+        OR (scope = 'personal' AND owner_user_id IS NOT NULL)
+      )
+    );
+
+    CREATE TABLE IF NOT EXISTS vocabulary_list_items (
+      list_id BIGINT NOT NULL REFERENCES vocabulary_lists(id) ON DELETE CASCADE,
+      word_id BIGINT NOT NULL REFERENCES vocabulary_words(id) ON DELETE RESTRICT,
+      sort_order INTEGER NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (list_id, word_id),
+      UNIQUE (list_id, sort_order)
+    );
+
+    CREATE TABLE IF NOT EXISTS user_vocabulary_word_status (
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      word_id BIGINT NOT NULL REFERENCES vocabulary_words(id) ON DELETE CASCADE,
+      learning_status TEXT CHECK (learning_status IN ('needed', 'completed')),
+      is_important BOOLEAN NOT NULL DEFAULT FALSE,
+      learning_status_updated_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (user_id, word_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS vocabulary_senses_word_sort_idx
+      ON vocabulary_senses (word_id, sort_order);
+
+    CREATE INDEX IF NOT EXISTS vocabulary_lists_owner_created_idx
+      ON vocabulary_lists (owner_user_id, created_at DESC);
+
+    CREATE INDEX IF NOT EXISTS vocabulary_lists_common_created_idx
+      ON vocabulary_lists (created_at DESC)
+      WHERE scope = 'common';
+
+    CREATE INDEX IF NOT EXISTS vocabulary_list_items_word_idx
+      ON vocabulary_list_items (word_id);
+
+    CREATE INDEX IF NOT EXISTS user_vocabulary_word_status_filter_idx
+      ON user_vocabulary_word_status (user_id, learning_status, is_important);
   `);
 }
 
