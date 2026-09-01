@@ -256,8 +256,8 @@ function learningPrompt(input: string, context?: string) {
 
 function vocabularyGenerationPrompt(count: number, excludedWords: string[]) {
   return [
-    'EnPra의 개인 영어 단어장을 만들고 있습니다.',
-    `실용적인 중상급 영어 단어 또는 짧은 관용구를 정확히 ${count}개 제안해 주세요.`,
+    'EnPra의 IELTS Academic 7.0 목표 학습자를 위한 개인 영어 단어장을 만들고 있습니다.',
+    `IELTS 7.0 수준의 학술적·실용적 중상급 영어 단어 또는 짧은 관용구를 정확히 ${count}개 제안해 주세요.`,
     '반드시 아래 JSON 객체만 반환하세요. 마크다운, 설명, 코드 블록은 절대 쓰지 마세요.',
     '{"words":[{"word":"example","pronunciationIpa":"[ɪɡˈzæmpəl]","senses":[{"partOfSpeech":"n","text":"예시, 사례"}]}]}',
     'partOfSpeech는 n, v, a, ad, prep, phrase, conj 중 하나만 사용합니다. 뜻은 자연스러운 한국어로 작성하세요.',
