@@ -137,7 +137,7 @@ function parseCandidates(text: string, expectedBand: DifficultyBand): Vocabulary
   return [...candidates.values()];
 }
 
-function vocabularyPrompt(count: number, band: DifficultyBand, topic: string) {
+function vocabularyPrompt(count: number, band: DifficultyBand, topic: string, excludedWords: string[]) {
   const bandInstruction: Record<DifficultyBand, string> = {
     under_5: 'IELTS 학습의 토대가 되는 고빈도 핵심어. 너무 유아적인 단독 기초어는 피하되, IELTS 지문·답변에서 실제로 쓰이는 필수 어휘를 고른다.',
     band_5: 'IELTS 5.0 이상 학습자에게 필요한 중급 핵심어. 일상·학업·사회 주제에서 반복 활용되는 어휘를 고른다.',
@@ -151,6 +151,8 @@ function vocabularyPrompt(count: number, band: DifficultyBand, topic: string) {
     `Prioritise IELTS Reading, Listening, Writing, and Speaking usefulness. This batch should emphasise the topic: ${topic}.`,
     'Exclude proper names, brand names, slang, archaic words, highly specialised jargon, transparent inflections, and near-duplicate word forms.',
     'Use base lemmas where possible. A fixed phrase is allowed only when it is a genuinely useful IELTS expression.',
+    'The following headwords are already in the shared pool. Never return any of them, including spelling variants or transparent derivatives.',
+    excludedWords.join(', '),
     'Return ONLY a valid JSON array. Do not use markdown or explanatory text.',
     'Each item must follow this exact schema:',
     '[{"word":"...","pronunciationIpa":"/.../","senses":[{"partOfSpeech":"n|v|a|ad|prep|phrase|conj","meaningKo":"자연스러운 한국어 뜻"}]}]',
@@ -209,6 +211,17 @@ async function getCounts(client: PoolClient, runId: string) {
   return counts;
 }
 
+async function getExcludedWords(client: PoolClient, runId: string) {
+  const result = await client.query<{ normalized_word: string }>(
+    `SELECT normalized_word FROM vocabulary_words
+     UNION
+     SELECT normalized_word FROM vocabulary_build_candidates WHERE run_id = $1
+     ORDER BY normalized_word`,
+    [runId],
+  );
+  return result.rows.map((row) => row.normalized_word);
+}
+
 function nextBand(counts: Record<DifficultyBand, number>) {
   return (Object.keys(targets) as DifficultyBand[])
     .filter((band) => counts[band] < targets[band])
@@ -237,8 +250,10 @@ async function buildCandidates(run: BuildRun) {
   while (true) {
     const client = await pool.connect();
     let counts: Record<DifficultyBand, number>;
+    let excludedWords: string[];
     try {
       counts = await getCounts(client, run.id);
+      excludedWords = await getExcludedWords(client, run.id);
     } finally {
       client.release();
     }
@@ -246,11 +261,11 @@ async function buildCandidates(run: BuildRun) {
     if (!band) break;
     const remaining = targets[band] - counts[band];
     const batchSize = Math.min(60, remaining);
-    const topic = topics[requestNumber % topics.length];
+    const topic = topics[(excludedWords.length + requestNumber) % topics.length];
     requestNumber += 1;
-    writeLog(`run=${run.id} request=${requestNumber} band=${band} current=${counts[band]}/${targets[band]} ask=${batchSize} topic=${topic}`);
+    writeLog(`run=${run.id} request=${requestNumber} band=${band} current=${counts[band]}/${targets[band]} ask=${batchSize} excluded=${excludedWords.length} topic=${topic}`);
     try {
-      const completion = await codex.get(builderUserId!).runLearningPrompt(vocabularyPrompt(batchSize, band, topic));
+      const completion = await codex.get(builderUserId!).runLearningPrompt(vocabularyPrompt(batchSize, band, topic, excludedWords));
       const candidates = parseCandidates(completion.text, band);
       const saveClient = await pool.connect();
       let inserted = 0;
