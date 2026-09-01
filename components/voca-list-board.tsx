@@ -16,7 +16,7 @@ type VocabularyWord = { id: number; word: string; pronunciationIpa: string; mean
 type ListsResponse = { lists?: VocabularyList[]; error?: string };
 type DetailResponse = { list?: VocabularyList; words?: VocabularyWord[]; error?: string };
 
-function FittedWord({ word }: { word: string }) {
+function FittedWord({ word, pronunciationIpa }: Pick<VocabularyWord, 'word' | 'pronunciationIpa'>) {
   const wordRef = useRef<HTMLHeadingElement>(null);
 
   useLayoutEffect(() => {
@@ -37,7 +37,7 @@ function FittedWord({ word }: { word: string }) {
     return () => observer.disconnect();
   }, [word]);
 
-  return <h3 ref={wordRef} className="min-w-0 truncate font-serif font-semibold tracking-[-0.035em] text-[#293632]">{word}</h3>;
+  return <div className="min-w-0 flex-1"><h3 ref={wordRef} className="w-full truncate font-serif font-semibold tracking-[-0.035em] text-[#293632]">{word}</h3><p className="mt-1 truncate text-xs font-medium tracking-[0.04em] text-[#8b938e] sm:text-sm">/{pronunciationIpa}/</p></div>;
 }
 
 function partOfSpeechLabel(value: string) {
@@ -134,7 +134,7 @@ export function VocaListBoard() {
           <div className="flex items-center gap-3"><button type="button" onClick={() => { setSelected(null); setWords([]); window.history.replaceState(null, '', '/voca/list'); }} aria-label="단어 목록으로 돌아가기" className="grid size-10 shrink-0 place-items-center rounded-xl border border-[#ded7ca] bg-[#fffdf8] text-[#52605b] transition-transform hover:bg-[#f4f0e8] active:scale-95"><ArrowLeft className="size-4" aria-hidden="true" /></button><div><p className="text-xs font-bold tracking-[0.14em] text-[#d76a47]">{selected.scope === 'common' ? 'COMMON VOCABULARY' : 'MY VOCABULARY'}</p><h2 id="word-list-title" className="mt-1 font-serif text-2xl sm:text-3xl">{selected.title}</h2></div></div>
           <span className="rounded-full bg-[#e8f0eb] px-3 py-1.5 text-xs font-semibold text-[#38634f]">{selected.wordCount}개 · {selected.scope === 'common' ? '공통' : '개인'}</span>
         </div>
-        {detailLoading ? <p className="rounded-3xl border border-[#ded7ca] bg-[#fffdf8] px-5 py-12 text-center text-sm text-[#77807a]">단어를 불러오는 중입니다.</p> : <div className="overflow-hidden rounded-3xl border border-[#dcd6ca] bg-[#fffdf8] shadow-[0_18px_48px_rgba(35,44,43,0.05)]">{words.map((item, index) => <article key={item.id} className="grid grid-cols-[minmax(0,.9fr)_minmax(0,1.1fr)] items-center gap-3 border-b border-[#e7e0d5] px-5 py-5 last:border-b-0 sm:gap-8 sm:px-7"><div className="flex min-w-0 items-baseline gap-2 sm:gap-3"><span className="w-4 shrink-0 text-xs font-semibold text-[#a3aaa5] sm:w-5">{index + 1}</span><FittedWord word={item.word} /></div><div className="border-l border-[#e9e1d6] pl-3 text-sm leading-6 text-[#59645e] sm:pl-7 sm:text-base sm:leading-7">{item.meanings.map((meaning, meaningIndex) => <p key={`${meaning.partOfSpeech}-${meaning.text}`} className="flex gap-2"><span className="w-9 shrink-0 font-semibold text-[#d76a47]">{meaningIndex === 0 || item.meanings[meaningIndex - 1].partOfSpeech !== meaning.partOfSpeech ? partOfSpeechLabel(meaning.partOfSpeech) : ''}</span><span>{meaning.text}</span></p>)}</div></article>)}</div>}
+        {detailLoading ? <p className="rounded-3xl border border-[#ded7ca] bg-[#fffdf8] px-5 py-12 text-center text-sm text-[#77807a]">단어를 불러오는 중입니다.</p> : <div className="overflow-hidden rounded-3xl border border-[#dcd6ca] bg-[#fffdf8] shadow-[0_18px_48px_rgba(35,44,43,0.05)]">{words.map((item, index) => <article key={item.id} className="grid grid-cols-[minmax(0,.9fr)_minmax(0,1.1fr)] items-center gap-3 border-b border-[#e7e0d5] px-5 py-5 last:border-b-0 sm:gap-8 sm:px-7"><div className="flex min-w-0 items-center gap-2 sm:gap-3"><span className="w-4 shrink-0 text-xs font-semibold text-[#a3aaa5] sm:w-5">{index + 1}</span><FittedWord word={item.word} pronunciationIpa={item.pronunciationIpa} /></div><div className="border-l border-[#e9e1d6] pl-3 text-sm leading-6 text-[#59645e] sm:pl-7 sm:text-base sm:leading-7">{item.meanings.map((meaning, meaningIndex) => <p key={`${meaning.partOfSpeech}-${meaning.text}`} className="flex gap-2"><span className="w-9 shrink-0 font-semibold text-[#d76a47]">{meaningIndex === 0 || item.meanings[meaningIndex - 1].partOfSpeech !== meaning.partOfSpeech ? partOfSpeechLabel(meaning.partOfSpeech) : ''}</span><span>{meaning.text}</span></p>)}</div></article>)}</div>}
       </section>
     );
   }
