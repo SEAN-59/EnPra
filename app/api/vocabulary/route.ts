@@ -43,11 +43,6 @@ export async function GET(request: NextRequest) {
 
   const mode = request.nextUrl.searchParams.get('mode');
   if (mode === 'catalog') return forwardToBridge('/api/vocabulary/catalog', 'GET', user);
-  if (mode === 'generation') {
-    const jobId = request.nextUrl.searchParams.get('jobId');
-    if (!jobId || !/^[0-9a-f-]{36}$/i.test(jobId)) return Response.json({ error: '올바른 AI 생성 작업이 아닙니다.' }, { status: 400 });
-    return forwardToBridge(`/api/vocabulary/generation/${jobId}`, 'GET', user);
-  }
   return forwardToBridge('/api/vocabulary/lists', 'GET', user);
 }
 
@@ -70,11 +65,6 @@ export async function POST(request: NextRequest) {
   if (body && typeof body === 'object' && (body as { action?: unknown }).action === 'manual-batch') {
     const { action: _action, ...manualWords } = body as { action: 'manual-batch' } & Record<string, unknown>;
     return forwardToBridge('/api/vocabulary/lists/manual-entries', 'POST', user, JSON.stringify(manualWords));
-  }
-
-  if (body && typeof body === 'object' && (body as { action?: unknown }).action === 'ai-generate') {
-    const { action: _action, ...generation } = body as { action: 'ai-generate' } & Record<string, unknown>;
-    return forwardToBridge('/api/vocabulary/lists/ai-generate', 'POST', user, JSON.stringify(generation));
   }
 
   const listId = body && typeof body === 'object' ? (body as { listId?: unknown }).listId : undefined;

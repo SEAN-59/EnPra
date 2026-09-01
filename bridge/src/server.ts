@@ -1,5 +1,5 @@
 import { serve } from '@hono/node-server';
-import { randomUUID, timingSafeEqual } from 'node:crypto';
+import { timingSafeEqual } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { Hono } from 'hono';
@@ -20,22 +20,6 @@ type ManualVocabularyBatchRequest = {
   listId?: unknown;
   listTitle?: unknown;
   words?: unknown;
-};
-type GeneratedVocabularyWord = {
-  word: string;
-  normalizedWord: string;
-  pronunciationIpa: string;
-  senses: Array<{ partOfSpeech: string; text: string }>;
-};
-type AIVocabularyGenerationResult = { listId: number; addedCount: number; attempts: number; partial: boolean };
-type AIVocabularyGenerationJob = {
-  id: string;
-  userId: string;
-  status: 'running' | 'completed' | 'failed';
-  attempts: number;
-  result?: AIVocabularyGenerationResult;
-  error?: string;
-  updatedAt: number;
 };
 type VocabularyListRow = {
   id: string | number;
@@ -64,7 +48,6 @@ mkdirSync(dataDir, { recursive: true });
 const pool = new Pool({ connectionString: databaseUrl });
 const codex = new CodexRegistry(dataDir);
 const expectedServiceToken = Buffer.from(serviceToken);
-const aiVocabularyGenerationJobs = new Map<string, AIVocabularyGenerationJob>();
 
 function isExpectedToken(value: string | undefined) {
   if (!value) return false;
@@ -100,6 +83,7 @@ async function initializeDatabase() {
       word TEXT NOT NULL,
       normalized_word TEXT NOT NULL UNIQUE,
       pronunciation_ipa TEXT NOT NULL,
+      difficulty_band TEXT CHECK (difficulty_band IN ('under_5', 'band_5', 'band_6', 'band_7_plus')),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       CHECK (char_length(trim(word)) > 0),
@@ -164,6 +148,14 @@ async function initializeDatabase() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       PRIMARY KEY (user_id, list_id)
     );
+
+    ALTER TABLE vocabulary_words
+      ADD COLUMN IF NOT EXISTS difficulty_band TEXT
+      CHECK (difficulty_band IN ('under_5', 'band_5', 'band_6', 'band_7_plus'));
+
+    CREATE INDEX IF NOT EXISTS vocabulary_words_difficulty_band_idx
+      ON vocabulary_words (difficulty_band)
+      WHERE difficulty_band IS NOT NULL;
 
     CREATE INDEX IF NOT EXISTS vocabulary_senses_word_sort_idx
       ON vocabulary_senses (word_id, sort_order);
@@ -252,46 +244,6 @@ function learningPrompt(input: string, context?: string) {
     context ? `학습 맥락:\n${context}` : null,
     `학습자 요청:\n${input}`,
   ].filter(Boolean).join('\n\n');
-}
-
-function vocabularyGenerationPrompt(count: number, excludedWords: string[]) {
-  return [
-    'EnPra의 IELTS Academic 7.0 목표 학습자를 위한 개인 영어 단어장을 만들고 있습니다.',
-    `IELTS 7.0 수준의 학술적·실용적 중상급 영어 단어 또는 짧은 관용구를 정확히 ${count}개 제안해 주세요.`,
-    '반드시 아래 JSON 객체만 반환하세요. 마크다운, 설명, 코드 블록은 절대 쓰지 마세요.',
-    '{"words":[{"word":"example","pronunciationIpa":"[ɪɡˈzæmpəl]","senses":[{"partOfSpeech":"n","text":"예시, 사례"}]}]}',
-    'partOfSpeech는 n, v, a, ad, prep, phrase, conj 중 하나만 사용합니다. 뜻은 자연스러운 한국어로 작성하세요.',
-    excludedWords.length ? `다음 단어는 이미 저장되었거나 중복 후보로 제외되었으니 절대로 다시 제안하지 마세요: ${excludedWords.join(', ')}` : null,
-  ].filter(Boolean).join('\n');
-}
-
-function parseGeneratedVocabulary(text: string): GeneratedVocabularyWord[] {
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1]?.trim();
-  const source = fenced ?? text.trim();
-  const objectStart = source.indexOf('{');
-  const objectEnd = source.lastIndexOf('}');
-  const json = objectStart >= 0 && objectEnd > objectStart ? source.slice(objectStart, objectEnd + 1) : source;
-  const parsed = JSON.parse(json) as { words?: unknown };
-  const allowedPartsOfSpeech = new Set(['n', 'v', 'a', 'ad', 'prep', 'phrase', 'conj']);
-  if (!Array.isArray(parsed.words)) return [];
-
-  return parsed.words.flatMap((item) => {
-    if (!item || typeof item !== 'object') return [];
-    const entry = item as { word?: unknown; pronunciationIpa?: unknown; senses?: unknown };
-    const word = typeof entry.word === 'string' ? entry.word.trim() : '';
-    const pronunciationIpa = typeof entry.pronunciationIpa === 'string' ? entry.pronunciationIpa.trim() : '';
-    const normalizedWord = word.normalize('NFKC').toLocaleLowerCase('en-US');
-    const senses = Array.isArray(entry.senses) ? entry.senses.flatMap((sense) => {
-      if (!sense || typeof sense !== 'object') return [];
-      const meaning = sense as { partOfSpeech?: unknown; text?: unknown };
-      const partOfSpeech = typeof meaning.partOfSpeech === 'string' ? meaning.partOfSpeech.trim() : '';
-      const meaningText = typeof meaning.text === 'string' ? meaning.text.trim() : '';
-      return allowedPartsOfSpeech.has(partOfSpeech) && meaningText ? [{ partOfSpeech, text: meaningText }] : [];
-    }) : [];
-    return word && word.length <= 120 && pronunciationIpa && pronunciationIpa.length <= 160 && senses.length && senses.length <= 20 && senses.every((sense) => sense.text.length <= 500)
-      ? [{ word, normalizedWord, pronunciationIpa, senses }]
-      : [];
-  });
 }
 
 function decodeDisplayName(value: string) {
@@ -520,137 +472,6 @@ app.post('/api/vocabulary/lists/manual-entries', async (c) => {
   } finally {
     client.release();
   }
-});
-
-async function generateAIVocabulary(user: UserContext, count: number, job: AIVocabularyGenerationJob): Promise<AIVocabularyGenerationResult> {
-  const selected = new Map<string, GeneratedVocabularyWord>();
-  const knownVocabulary = await pool.query<{ normalized_word: string }>(
-    'SELECT normalized_word FROM vocabulary_words ORDER BY normalized_word',
-  );
-  const excludedWords = new Set(knownVocabulary.rows.map((word) => word.normalized_word));
-  let attempts = 0;
-  let lastError: Error | null = null;
-  while (selected.size < count && attempts < 5) {
-    attempts += 1;
-    job.attempts = attempts;
-    job.updatedAt = Date.now();
-    try {
-      const remaining = count - selected.size;
-      const candidateCount = Math.min(Math.max(remaining * 2, 20), 50);
-      const completion = await codex.get(user.id).runLearningPrompt(
-        vocabularyGenerationPrompt(candidateCount, [...excludedWords].slice(-1_000)),
-      );
-      const candidates = parseGeneratedVocabulary(completion.text);
-      for (const word of candidates) excludedWords.add(word.normalizedWord);
-      const uniqueCandidates = candidates.filter((word) => !selected.has(word.normalizedWord));
-      if (!uniqueCandidates.length) continue;
-      const existing = await pool.query<{ normalized_word: string }>(
-        'SELECT normalized_word FROM vocabulary_words WHERE normalized_word = ANY($1::text[])',
-        [uniqueCandidates.map((word) => word.normalizedWord)],
-      );
-      const existingWords = new Set(existing.rows.map((word) => word.normalized_word));
-      for (const word of uniqueCandidates) {
-        if (!existingWords.has(word.normalizedWord) && selected.size < count) selected.set(word.normalizedWord, word);
-      }
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error('AI 단어 생성에 실패했습니다.');
-    }
-  }
-
-  if (selected.size < count) {
-    if (!selected.size) throw lastError ?? new Error('중복되지 않는 새 단어를 찾지 못했습니다. 잠시 후 다시 시도해 주세요.');
-  }
-
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    const listTitle = `AI 단어 · ${new Date().toISOString().slice(0, 10).replaceAll('-', '.')}`;
-    const list = await client.query<{ id: string | number }>(
-      `INSERT INTO vocabulary_lists (owner_user_id, scope, list_type, title)
-       VALUES ($1, 'personal', 'ai_generated', $2) RETURNING id`,
-      [user.id, listTitle],
-    );
-    const listId = Number(list.rows[0].id);
-    let sortOrder = 0;
-    for (const entry of selected.values()) {
-      const word = await client.query<{ id: string | number }>(
-        `INSERT INTO vocabulary_words (word, normalized_word, pronunciation_ipa)
-         VALUES ($1, $2, $3) RETURNING id`,
-        [entry.word, entry.normalizedWord, entry.pronunciationIpa],
-      );
-      const wordId = Number(word.rows[0].id);
-      for (const [senseIndex, sense] of entry.senses.entries()) {
-        await client.query(
-          `INSERT INTO vocabulary_senses (word_id, part_of_speech, meaning_ko, sort_order)
-           VALUES ($1, $2, $3, $4)`,
-          [wordId, sense.partOfSpeech, sense.text, senseIndex],
-        );
-      }
-      await client.query(
-        `INSERT INTO vocabulary_list_items (list_id, word_id, sort_order)
-         VALUES ($1, $2, $3)`,
-        [listId, wordId, sortOrder],
-      );
-      sortOrder += 1;
-    }
-    await client.query('COMMIT');
-    return { listId, addedCount: selected.size, attempts, partial: selected.size < count };
-  } catch (error) {
-    await client.query('ROLLBACK');
-    console.error('AI vocabulary generation storage failed', { userId: user.id, message: error instanceof Error ? error.message : String(error) });
-    throw new Error('AI 단어를 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.');
-  } finally {
-    client.release();
-  }
-}
-
-app.post('/api/vocabulary/lists/ai-generate', async (c) => {
-  const user = c.get('user');
-  let body: { count?: unknown };
-  try {
-    body = await c.req.json<{ count?: unknown }>();
-  } catch {
-    return c.json({ error: 'AI 생성 요청 형식이 올바르지 않습니다.' }, 400);
-  }
-  const count = typeof body.count === 'number' ? body.count : NaN;
-  if (!Number.isInteger(count) || count < 20 || count > 50 || count % 5 !== 0) {
-    return c.json({ error: '생성 개수는 20개부터 50개 사이의 5개 단위여야 합니다.' }, 400);
-  }
-
-  try {
-    const account = await codex.get(user.id).readAccount();
-    if (account?.type !== 'chatgpt') {
-      await markConnection(user.id, 'disconnected');
-      return c.json({ error: '먼저 ChatGPT OAuth 연결을 완료해 주세요.' }, 409);
-    }
-    await markConnection(user.id, 'active', account.planType);
-  } catch (error) {
-    return c.json({ error: error instanceof Error ? error.message : 'ChatGPT 연결 상태를 확인하지 못했습니다.' }, 502);
-  }
-
-  const existingJob = [...aiVocabularyGenerationJobs.values()].find((job) => job.userId === user.id && job.status === 'running');
-  if (existingJob) return c.json({ jobId: existingJob.id, status: existingJob.status }, 202);
-
-  const job: AIVocabularyGenerationJob = {
-    id: randomUUID(), userId: user.id, status: 'running', attempts: 0, updatedAt: Date.now(),
-  };
-  aiVocabularyGenerationJobs.set(job.id, job);
-  void generateAIVocabulary(user, count, job)
-    .then((result) => { job.status = 'completed'; job.result = result; job.updatedAt = Date.now(); })
-    .catch((error) => { job.status = 'failed'; job.error = error instanceof Error ? error.message : 'AI 단어 생성에 실패했습니다.'; job.updatedAt = Date.now(); });
-  return c.json({ jobId: job.id, status: job.status }, 202);
-});
-
-app.get('/api/vocabulary/generation/:jobId', (c) => {
-  const user = c.get('user');
-  const job = aiVocabularyGenerationJobs.get(c.req.param('jobId'));
-  if (!job || job.userId !== user.id) return c.json({ error: 'AI 생성 작업을 찾을 수 없습니다.' }, 404);
-  return c.json({
-    status: job.status,
-    attempts: job.attempts,
-    ...(job.status === 'completed' ? job.result : {}),
-    ...(job.status === 'failed' ? { error: job.error ?? 'AI 단어 생성에 실패했습니다.' } : {}),
-  });
 });
 
 app.post('/api/vocabulary/words', async (c) => {
