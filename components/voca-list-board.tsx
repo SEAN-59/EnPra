@@ -423,7 +423,7 @@ export function VocaListBoard() {
                       word={item.word}
                       pronunciationIpa={item.pronunciationIpa}
                     />
-                    <div className="mt-3 flex justify-center">
+                    <div className="mt-3 flex justify-start">
                       <WordStatusButtons
                         word={item}
                         pending={statusWordId === item.id}
