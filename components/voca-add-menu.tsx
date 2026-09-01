@@ -57,7 +57,8 @@ export function VocaAddMenu() {
       if (!response.ok) throw new Error(result.error ?? '공통 목록을 추가하지 못했습니다.');
       setCatalogLists((current) => current.filter((item) => item.id !== list.id));
       setSavedLists((current) => [{ ...list, scope: 'common' }, ...current]);
-      toast.add({ title: '단어 목록을 추가했어요.', description: `‘${list.title}’을 모든 기기에서 볼 수 있어요.`, type: 'success' });
+      setLibraryOpen(false);
+      window.location.href = '/voca/list';
     } catch (error) {
       toast.add({ title: '공통 목록을 추가하지 못했어요.', description: error instanceof Error ? error.message : '잠시 후 다시 시도해 주세요.', type: 'error', priority: 'high' });
     }
