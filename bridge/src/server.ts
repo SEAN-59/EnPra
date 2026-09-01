@@ -11,6 +11,11 @@ import { CodexRegistry } from './codex.js';
 type UserContext = { id: string; displayName: string };
 type Variables = { user: UserContext };
 type LearningRequest = { input?: unknown; context?: unknown };
+type ManualVocabularyRequest = {
+  word?: unknown;
+  pronunciationIpa?: unknown;
+  senses?: unknown;
+};
 type VocabularyListRow = {
   id: string | number;
   title: string;
@@ -328,6 +333,104 @@ app.post('/api/vocabulary/lists/:listId/add', async (c) => {
     [user.id, listId],
   );
   return c.json({ added: true, listId });
+});
+
+app.post('/api/vocabulary/words', async (c) => {
+  const user = c.get('user');
+  let body: ManualVocabularyRequest;
+  try {
+    body = await c.req.json<ManualVocabularyRequest>();
+  } catch {
+    return c.json({ error: '단어 입력 형식이 올바르지 않습니다.' }, 400);
+  }
+
+  const word = typeof body.word === 'string' ? body.word.trim() : '';
+  const pronunciationIpa = typeof body.pronunciationIpa === 'string' ? body.pronunciationIpa.trim() : '';
+  const normalizedWord = word.normalize('NFKC').toLocaleLowerCase('en-US');
+  const allowedPartsOfSpeech = new Set(['n', 'v', 'a', 'ad', 'prep', 'phrase', 'conj']);
+  const senses = Array.isArray(body.senses)
+    ? body.senses.flatMap((sense) => {
+      if (!sense || typeof sense !== 'object') return [];
+      const entry = sense as { partOfSpeech?: unknown; text?: unknown };
+      const partOfSpeech = typeof entry.partOfSpeech === 'string' ? entry.partOfSpeech.trim() : '';
+      const text = typeof entry.text === 'string' ? entry.text.trim() : '';
+      return allowedPartsOfSpeech.has(partOfSpeech) && text ? [{ partOfSpeech, text }] : [];
+    })
+    : [];
+
+  if (!word || word.length > 120 || !pronunciationIpa || pronunciationIpa.length > 160 || !senses.length || senses.length > 20) {
+    return c.json({ error: '영단어, 발음, 그리고 최소 한 개의 뜻을 입력해 주세요.' }, 400);
+  }
+  if (senses.some((sense) => sense.text.length > 500)) return c.json({ error: '뜻은 500자 이내로 입력해 주세요.' }, 400);
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const wordResult = await client.query<{ id: string | number }>(
+      `INSERT INTO vocabulary_words (word, normalized_word, pronunciation_ipa)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (normalized_word) DO UPDATE SET updated_at = NOW()
+       RETURNING id`,
+      [word, normalizedWord, pronunciationIpa],
+    );
+    const wordId = Number(wordResult.rows[0].id);
+
+    const currentSort = await client.query<{ next_sort: number }>(
+      `SELECT COALESCE(MAX(sort_order) + 1, 0)::INTEGER AS next_sort
+       FROM vocabulary_senses WHERE word_id = $1`,
+      [wordId],
+    );
+    let sortOrder = currentSort.rows[0].next_sort;
+    for (const sense of senses) {
+      const existing = await client.query(
+        `SELECT 1 FROM vocabulary_senses
+         WHERE word_id = $1 AND part_of_speech = $2 AND meaning_ko = $3`,
+        [wordId, sense.partOfSpeech, sense.text],
+      );
+      if (!existing.rowCount) {
+        await client.query(
+          `INSERT INTO vocabulary_senses (word_id, part_of_speech, meaning_ko, sort_order)
+           VALUES ($1, $2, $3, $4)`,
+          [wordId, sense.partOfSpeech, sense.text, sortOrder],
+        );
+        sortOrder += 1;
+      }
+    }
+
+    const defaultListTitle = '직접 추가한 단어';
+    let list = await client.query<{ id: string | number }>(
+      `SELECT id FROM vocabulary_lists
+       WHERE owner_user_id = $1 AND scope = 'personal' AND list_type = 'custom' AND title = $2
+       ORDER BY id ASC LIMIT 1`,
+      [user.id, defaultListTitle],
+    );
+    if (!list.rows[0]) {
+      list = await client.query<{ id: string | number }>(
+        `INSERT INTO vocabulary_lists (owner_user_id, scope, list_type, title)
+         VALUES ($1, 'personal', 'custom', $2) RETURNING id`,
+        [user.id, defaultListTitle],
+      );
+    }
+    const listId = Number(list.rows[0].id);
+    const nextItemSort = await client.query<{ next_sort: number }>(
+      `SELECT COALESCE(MAX(sort_order) + 1, 0)::INTEGER AS next_sort
+       FROM vocabulary_list_items WHERE list_id = $1`,
+      [listId],
+    );
+    const inserted = await client.query(
+      `INSERT INTO vocabulary_list_items (list_id, word_id, sort_order)
+       VALUES ($1, $2, $3) ON CONFLICT (list_id, word_id) DO NOTHING`,
+      [listId, wordId, nextItemSort.rows[0].next_sort],
+    );
+    await client.query('COMMIT');
+    return c.json({ created: inserted.rowCount === 1, listId, wordId });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Manual vocabulary creation failed', { userId: user.id, message: error instanceof Error ? error.message : String(error) });
+    return c.json({ error: '단어를 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.' }, 500);
+  } finally {
+    client.release();
+  }
 });
 
 app.get('/api/vocabulary/lists/:listId', async (c) => {
