@@ -1,4 +1,4 @@
-import { ArrowRight, BarChart3, BookOpenCheck, ClipboardCheck, FileText, GraduationCap, Sparkles, Target } from 'lucide-react';
+import { ArrowRight, BarChart3, BookOpenCheck, ClipboardCheck, FileText, Sparkles, Target } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 
@@ -25,12 +25,10 @@ export function WritingBoard() {
         <div className="grid gap-6 p-6 sm:p-8 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
           <div>
             <div className="flex items-center gap-2 text-sm font-semibold text-[#38634f]"><Sparkles className="size-4" aria-hidden="true" />CURRENT WRITING STATUS</div>
-            <h3 className="mt-4 font-serif text-3xl tracking-tight">첫 학습을 시작해 보세요.</h3>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-[#69736e]">아직 Writing 기록이 없습니다. 시작 난이도를 정한 뒤 학습을 완료하면, 강점과 보완 항목을 바탕으로 다음 학습을 안내해 드립니다.</p>
+            <h3 className="mt-4 font-serif text-3xl tracking-tight">현재 학습 기록이 없습니다.</h3>
           </div>
           <Button asChild size="lg" className="h-11 shrink-0 rounded-xl bg-[#1d2935] px-5 text-[#fffdf8] hover:bg-[#344451]"><a href="/writing/learning?setup=level" className="inline-flex items-center justify-center gap-2 whitespace-nowrap">학습 시작하기 <ArrowRight className="size-4" aria-hidden="true" /></a></Button>
         </div>
-        <div className="border-t border-[#e8e2d6] bg-[#fbf9f4] px-6 py-4 text-sm text-[#737b76] sm:px-8"><span className="font-semibold text-[#52605b]">안내</span><span className="mx-2 text-[#c7beb1]">·</span>승급 테스트는 학습·일반 테스트 기록이 충분히 쌓인 뒤에만 안내됩니다.</div>
       </section>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
@@ -60,8 +58,6 @@ export function WritingBoard() {
           <a href="/writing/notebook" className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#d8d0c3] bg-[#fffdf8] px-4 py-2.5 text-sm font-semibold text-[#596560] transition-colors hover:bg-[#f1ede5]">오답노트 보기 <ArrowRight className="size-4" aria-hidden="true" /></a>
         </section>
       </section>
-
-      <section className="mt-4 rounded-2xl border border-[#e9d6ab] bg-[#fff8e7] p-5 text-sm leading-6 text-[#705b2d]" aria-label="승급 테스트 안내"><div className="flex items-start gap-3"><GraduationCap className="mt-0.5 size-5 shrink-0 text-[#b0781f]" aria-hidden="true" /><p><span className="font-semibold">승급 테스트 안내</span><br />현재 단계의 마지막 내부 난이도까지 학습 기록이 쌓이면, 다음 단계를 위한 3문항 승급 테스트를 안내합니다.</p></div></section>
     </section>
   );
 }
