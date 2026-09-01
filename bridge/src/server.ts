@@ -255,7 +255,7 @@ const app = new Hono<{ Variables: Variables }>();
 app.use('*', cors({
   origin: (origin) => (!origin || corsOrigins.includes(origin) ? origin ?? corsOrigins[0] : null),
   allowHeaders: ['Authorization', 'Content-Type', 'X-EnPra-Service-Token', 'X-EnPra-User-Id', 'X-EnPra-User-Name'],
-  allowMethods: ['GET', 'POST', 'OPTIONS'],
+  allowMethods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
 }));
 
 app.get('/health', async (c) => {
@@ -347,6 +347,34 @@ app.post('/api/vocabulary/lists/:listId/add', async (c) => {
     [user.id, listId],
   );
   return c.json({ added: true, listId });
+});
+
+app.delete('/api/vocabulary/lists/:listId', async (c) => {
+  const user = c.get('user');
+  const listId = Number(c.req.param('listId'));
+  if (!Number.isSafeInteger(listId) || listId < 1) return c.json({ error: '올바른 단어 목록이 아닙니다.' }, 400);
+
+  const list = await pool.query<{ scope: 'common' | 'personal'; owner_user_id: string | null }>(
+    'SELECT scope, owner_user_id FROM vocabulary_lists WHERE id = $1',
+    [listId],
+  );
+  const current = list.rows[0];
+  if (!current) return c.json({ error: '존재하지 않는 단어 목록입니다.' }, 404);
+
+  if (current.scope === 'common') {
+    const updated = await pool.query(
+      `UPDATE user_vocabulary_list_subscriptions
+       SET is_enabled = FALSE, updated_at = NOW()
+       WHERE user_id = $1 AND list_id = $2 AND is_enabled = TRUE`,
+      [user.id, listId],
+    );
+    if (!updated.rowCount) return c.json({ error: '내 목록에 추가되지 않은 공통 단어 목록입니다.' }, 404);
+    return c.json({ removed: true, listId, scope: 'common' });
+  }
+
+  if (current.owner_user_id !== user.id) return c.json({ error: '지울 수 없는 개인 단어 목록입니다.' }, 403);
+  await pool.query('DELETE FROM vocabulary_lists WHERE id = $1 AND owner_user_id = $2', [listId, user.id]);
+  return c.json({ removed: true, listId, scope: 'personal' });
 });
 
 app.post('/api/vocabulary/lists/manual-entries', async (c) => {
