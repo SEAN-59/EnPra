@@ -11,6 +11,15 @@ import { CodexRegistry } from './codex.js';
 type UserContext = { id: string; displayName: string };
 type Variables = { user: UserContext };
 type LearningRequest = { input?: unknown; context?: unknown };
+type VocabularyListRow = {
+  id: string | number;
+  title: string;
+  scope: 'common' | 'personal';
+  list_type: 'daily' | 'custom' | 'ai_generated';
+  learning_date: string | null;
+  word_count: string | number;
+  added_at?: string | null;
+};
 
 const port = Number(process.env.PORT ?? 8787);
 const dataDir = process.env.ENPRA_DATA_DIR ?? join(process.cwd(), '.enpra-data');
@@ -120,6 +129,15 @@ async function initializeDatabase() {
       PRIMARY KEY (user_id, word_id)
     );
 
+    CREATE TABLE IF NOT EXISTS user_vocabulary_list_subscriptions (
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      list_id BIGINT NOT NULL REFERENCES vocabulary_lists(id) ON DELETE CASCADE,
+      is_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      added_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (user_id, list_id)
+    );
+
     CREATE INDEX IF NOT EXISTS vocabulary_senses_word_sort_idx
       ON vocabulary_senses (word_id, sort_order);
 
@@ -135,7 +153,42 @@ async function initializeDatabase() {
 
     CREATE INDEX IF NOT EXISTS user_vocabulary_word_status_filter_idx
       ON user_vocabulary_word_status (user_id, learning_status, is_important);
+
+    CREATE INDEX IF NOT EXISTS user_vocabulary_list_subscriptions_visible_idx
+      ON user_vocabulary_list_subscriptions (user_id, is_enabled, updated_at DESC);
   `);
+}
+
+function serializeVocabularyList(row: VocabularyListRow) {
+  return {
+    id: Number(row.id),
+    title: row.title,
+    scope: row.scope,
+    listType: row.list_type,
+    learningDate: row.learning_date,
+    wordCount: Number(row.word_count),
+    addedAt: row.added_at ?? null,
+  };
+}
+
+async function getAccessibleVocabularyList(userId: string, listId: number) {
+  const result = await pool.query<VocabularyListRow>(
+    `SELECT l.id, l.title, l.scope, l.list_type, l.learning_date,
+            COUNT(li.word_id)::INTEGER AS word_count,
+            s.added_at
+     FROM vocabulary_lists l
+     LEFT JOIN vocabulary_list_items li ON li.list_id = l.id
+     LEFT JOIN user_vocabulary_list_subscriptions s
+       ON s.list_id = l.id AND s.user_id = $1
+     WHERE l.id = $2
+       AND (
+         l.owner_user_id = $1
+         OR (l.scope = 'common' AND s.is_enabled = TRUE)
+       )
+     GROUP BY l.id, s.added_at`,
+    [userId, listId],
+  );
+  return result.rows[0] ?? null;
 }
 
 async function upsertUser(user: UserContext) {
@@ -216,6 +269,108 @@ app.get('/api/me', async (c) => {
     [user.id],
   );
   return c.json({ user, connection: result.rows[0] ?? null });
+});
+
+app.get('/api/vocabulary/lists', async (c) => {
+  const user = c.get('user');
+  const result = await pool.query<VocabularyListRow>(
+    `SELECT l.id, l.title, l.scope, l.list_type, l.learning_date,
+            COUNT(li.word_id)::INTEGER AS word_count,
+            s.added_at
+     FROM vocabulary_lists l
+     LEFT JOIN vocabulary_list_items li ON li.list_id = l.id
+     LEFT JOIN user_vocabulary_list_subscriptions s
+       ON s.list_id = l.id AND s.user_id = $1
+     WHERE l.owner_user_id = $1
+        OR (l.scope = 'common' AND s.is_enabled = TRUE)
+     GROUP BY l.id, s.added_at, s.updated_at
+     ORDER BY COALESCE(s.updated_at, l.updated_at) DESC, l.id DESC`,
+    [user.id],
+  );
+  return c.json({ lists: result.rows.map(serializeVocabularyList) });
+});
+
+app.get('/api/vocabulary/catalog', async (c) => {
+  const user = c.get('user');
+  const result = await pool.query<VocabularyListRow>(
+    `SELECT l.id, l.title, l.scope, l.list_type, l.learning_date,
+            COUNT(li.word_id)::INTEGER AS word_count,
+            s.added_at
+     FROM vocabulary_lists l
+     LEFT JOIN vocabulary_list_items li ON li.list_id = l.id
+     LEFT JOIN user_vocabulary_list_subscriptions s
+       ON s.list_id = l.id AND s.user_id = $1
+     WHERE l.scope = 'common'
+       AND COALESCE(s.is_enabled, FALSE) = FALSE
+     GROUP BY l.id, s.added_at
+     ORDER BY l.created_at DESC, l.id DESC`,
+    [user.id],
+  );
+  return c.json({ lists: result.rows.map(serializeVocabularyList) });
+});
+
+app.post('/api/vocabulary/lists/:listId/add', async (c) => {
+  const user = c.get('user');
+  const listId = Number(c.req.param('listId'));
+  if (!Number.isSafeInteger(listId) || listId < 1) return c.json({ error: '올바른 단어 목록이 아닙니다.' }, 400);
+
+  const list = await pool.query<{ scope: string }>(
+    'SELECT scope FROM vocabulary_lists WHERE id = $1',
+    [listId],
+  );
+  if (!list.rows[0] || list.rows[0].scope !== 'common') return c.json({ error: '공통 단어 목록만 추가할 수 있습니다.' }, 404);
+
+  await pool.query(
+    `INSERT INTO user_vocabulary_list_subscriptions (user_id, list_id, is_enabled)
+     VALUES ($1, $2, TRUE)
+     ON CONFLICT (user_id, list_id) DO UPDATE
+     SET is_enabled = TRUE, updated_at = NOW()`,
+    [user.id, listId],
+  );
+  return c.json({ added: true, listId });
+});
+
+app.get('/api/vocabulary/lists/:listId', async (c) => {
+  const user = c.get('user');
+  const listId = Number(c.req.param('listId'));
+  if (!Number.isSafeInteger(listId) || listId < 1) return c.json({ error: '올바른 단어 목록이 아닙니다.' }, 400);
+
+  const list = await getAccessibleVocabularyList(user.id, listId);
+  if (!list) return c.json({ error: '접근할 수 없는 단어 목록입니다.' }, 404);
+
+  const words = await pool.query<{ id: string | number; word: string; pronunciation_ipa: string; sort_order: number }>(
+    `SELECT w.id, w.word, w.pronunciation_ipa, li.sort_order
+     FROM vocabulary_list_items li
+     JOIN vocabulary_words w ON w.id = li.word_id
+     WHERE li.list_id = $1
+     ORDER BY li.sort_order ASC`,
+    [listId],
+  );
+  const senses = await pool.query<{ word_id: string | number; part_of_speech: string; meaning_ko: string; sort_order: number }>(
+    `SELECT s.word_id, s.part_of_speech, s.meaning_ko, s.sort_order
+     FROM vocabulary_senses s
+     JOIN vocabulary_list_items li ON li.word_id = s.word_id
+     WHERE li.list_id = $1
+     ORDER BY s.word_id ASC, s.sort_order ASC`,
+    [listId],
+  );
+  const sensesByWord = new Map<number, Array<{ partOfSpeech: string; text: string }>>();
+  for (const sense of senses.rows) {
+    const wordId = Number(sense.word_id);
+    const current = sensesByWord.get(wordId) ?? [];
+    current.push({ partOfSpeech: sense.part_of_speech, text: sense.meaning_ko });
+    sensesByWord.set(wordId, current);
+  }
+
+  return c.json({
+    list: serializeVocabularyList(list),
+    words: words.rows.map((word) => ({
+      id: Number(word.id),
+      word: word.word,
+      pronunciationIpa: word.pronunciation_ipa,
+      meanings: sensesByWord.get(Number(word.id)) ?? [],
+    })),
+  });
 });
 
 app.post('/api/connections/codex/start', async (c) => {

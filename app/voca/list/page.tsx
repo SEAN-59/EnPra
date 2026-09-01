@@ -12,7 +12,7 @@ export default async function VocaListPage() {
   return (
     <AppShell activeSection="VOCA" displayName={user.displayName} signOutHref={chatGPTSignOutPath('/voca/list')}>
       <section className="min-w-0">
-        <VocaHeader title="생성된 단어 리스트." description="AI가 만든 단어를 일일 단위로 확인하고 학습을 이어가세요." />
+        <VocaHeader title="저장된 단어 리스트." description="추가한 공통 목록과 내 개인 단어 목록을 기기와 관계없이 이어서 학습하세요." />
         <div className="mt-9"><StudySubnav activeItem="LIST" /></div>
         <VocaListBoard />
       </section>

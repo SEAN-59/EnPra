@@ -1,10 +1,19 @@
 'use client';
 
-import { ArrowLeft, CheckCircle2, ChevronRight, ListChecks, Sparkles } from 'lucide-react';
-import { useLayoutEffect, useRef, useState } from 'react';
+import { ArrowLeft, BookOpenCheck, ChevronRight, ListChecks } from 'lucide-react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
-type VocabularyMeaning = { partOfSpeech: 'n.' | 'v.' | 'a.' | 'ad.'; text: string };
-type VocabularyWord = { word: string; meanings: VocabularyMeaning[] };
+type VocabularyList = {
+  id: number;
+  title: string;
+  scope: 'common' | 'personal';
+  listType: 'daily' | 'custom' | 'ai_generated';
+  learningDate: string | null;
+  wordCount: number;
+};
+type VocabularyWord = { id: number; word: string; pronunciationIpa: string; meanings: Array<{ partOfSpeech: string; text: string }> };
+type ListsResponse = { lists?: VocabularyList[]; error?: string };
+type DetailResponse = { list?: VocabularyList; words?: VocabularyWord[]; error?: string };
 
 function FittedWord({ word }: { word: string }) {
   const wordRef = useRef<HTMLHeadingElement>(null);
@@ -12,18 +21,15 @@ function FittedWord({ word }: { word: string }) {
   useLayoutEffect(() => {
     const element = wordRef.current;
     if (!element) return;
-
     const fit = () => {
       const maximum = window.matchMedia('(min-width: 640px)').matches ? 36 : 24;
       let size = maximum;
       element.style.fontSize = `${size}px`;
-
       while (element.scrollWidth > element.clientWidth && size > 11) {
         size -= 1;
         element.style.fontSize = `${size}px`;
       }
     };
-
     const observer = new ResizeObserver(fit);
     observer.observe(element);
     fit();
@@ -33,32 +39,76 @@ function FittedWord({ word }: { word: string }) {
   return <h3 ref={wordRef} className="min-w-0 truncate font-serif font-semibold tracking-[-0.035em] text-[#293632]">{word}</h3>;
 }
 
-const lists: Array<{ id: string; date: string; label: string; count: number; status: string; words: VocabularyWord[] }> = [
-  { id: 'aug-31', date: '2026. 08. 31', label: '오늘', count: 20, status: '학습 전', words: [{ word: 'habit', meanings: [{ partOfSpeech: 'n.', text: '습관' }, { partOfSpeech: 'n.', text: '버릇' }] }, { word: 'routine', meanings: [{ partOfSpeech: 'n.', text: '일상' }, { partOfSpeech: 'n.', text: '규칙적인 절차' }] }, { word: 'sustainable', meanings: [{ partOfSpeech: 'a.', text: '지속 가능한' }, { partOfSpeech: 'a.', text: '계속할 수 있는' }] }, { word: 'commitment', meanings: [{ partOfSpeech: 'n.', text: '전념' }, { partOfSpeech: 'n.', text: '약속, 책임' }] }, { word: 'consistent', meanings: [{ partOfSpeech: 'a.', text: '일관된' }, { partOfSpeech: 'a.', text: '꾸준한' }] }, { word: 'realistic', meanings: [{ partOfSpeech: 'a.', text: '현실적인' }, { partOfSpeech: 'a.', text: '실현 가능한' }] }] },
-  { id: 'aug-30', date: '2026. 08. 30', label: '어제', count: 20, status: '학습 완료', words: [{ word: 'perspective', meanings: [{ partOfSpeech: 'n.', text: '관점' }, { partOfSpeech: 'n.', text: '시각' }] }, { word: 'approach', meanings: [{ partOfSpeech: 'n.', text: '접근법' }, { partOfSpeech: 'v.', text: '다가가다' }] }, { word: 'challenge', meanings: [{ partOfSpeech: 'n.', text: '도전, 난제' }, { partOfSpeech: 'v.', text: '도전하다' }] }, { word: 'progress', meanings: [{ partOfSpeech: 'n.', text: '진전' }, { partOfSpeech: 'v.', text: '발전하다' }] }, { word: 'reflect', meanings: [{ partOfSpeech: 'v.', text: '되돌아보다' }, { partOfSpeech: 'v.', text: '반영하다' }] }, { word: 'improve', meanings: [{ partOfSpeech: 'v.', text: '개선하다' }, { partOfSpeech: 'v.', text: '향상시키다' }] }] },
-  { id: 'aug-29', date: '2026. 08. 29', label: '금요일', count: 30, status: '학습 완료', words: [{ word: 'consider', meanings: [{ partOfSpeech: 'v.', text: '고려하다' }, { partOfSpeech: 'v.', text: '생각하다' }] }, { word: 'decision', meanings: [{ partOfSpeech: 'n.', text: '결정' }, { partOfSpeech: 'n.', text: '판단' }] }, { word: 'priority', meanings: [{ partOfSpeech: 'n.', text: '우선순위' }, { partOfSpeech: 'n.', text: '우선 사항' }] }, { word: 'balance', meanings: [{ partOfSpeech: 'n.', text: '균형' }, { partOfSpeech: 'v.', text: '균형을 맞추다' }] }, { word: 'achieve', meanings: [{ partOfSpeech: 'v.', text: '달성하다' }, { partOfSpeech: 'v.', text: '이루다' }] }, { word: 'focus', meanings: [{ partOfSpeech: 'n.', text: '집중' }, { partOfSpeech: 'v.', text: '집중하다' }] }] },
-  { id: 'aug-28', date: '2026. 08. 28', label: '목요일', count: 20, status: '학습 완료', words: [{ word: 'encourage', meanings: [{ partOfSpeech: 'v.', text: '격려하다' }, { partOfSpeech: 'v.', text: '장려하다' }] }, { word: 'support', meanings: [{ partOfSpeech: 'v.', text: '지원하다' }, { partOfSpeech: 'n.', text: '지지' }] }, { word: 'confidence', meanings: [{ partOfSpeech: 'n.', text: '자신감' }, { partOfSpeech: 'n.', text: '신뢰' }] }, { word: 'effort', meanings: [{ partOfSpeech: 'n.', text: '노력' }, { partOfSpeech: 'n.', text: '수고' }] }, { word: 'growth', meanings: [{ partOfSpeech: 'n.', text: '성장' }, { partOfSpeech: 'n.', text: '증가' }] }, { word: 'notice', meanings: [{ partOfSpeech: 'v.', text: '알아차리다' }, { partOfSpeech: 'n.', text: '공지' }] }] },
-];
+function partOfSpeechLabel(value: string) {
+  const labels: Record<string, string> = { n: 'n.', v: 'v.', a: 'a.', ad: 'ad.', prep: 'prep.', phrase: 'phr.', conj: 'conj.' };
+  return labels[value] ?? value;
+}
+
+async function readResponse<T>(response: Response): Promise<T> {
+  const text = await response.text();
+  try { return JSON.parse(text) as T; } catch { throw new Error(text || '요청을 처리하지 못했습니다.'); }
+}
 
 export function VocaListBoard() {
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const selected = lists.find((list) => list.id === selectedId);
+  const [lists, setLists] = useState<VocabularyList[]>([]);
+  const [selected, setSelected] = useState<VocabularyList | null>(null);
+  const [words, setWords] = useState<VocabularyWord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  async function selectList(list: VocabularyList) {
+    setDetailLoading(true);
+    setMessage(null);
+    try {
+      const response = await fetch(`/api/vocabulary/list/${list.id}`, { cache: 'no-store' });
+      const result = await readResponse<DetailResponse>(response);
+      if (!response.ok || !result.list) throw new Error(result.error ?? '단어 목록을 불러오지 못했습니다.');
+      setSelected(result.list);
+      setWords(result.words ?? []);
+      window.history.replaceState(null, '', `/voca/list?list=${list.id}`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : '단어 목록을 불러오지 못했습니다.');
+    } finally {
+      setDetailLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    let active = true;
+    fetch('/api/vocabulary', { cache: 'no-store' })
+      .then(async (response) => {
+        const result = await readResponse<ListsResponse>(response);
+        if (!response.ok) throw new Error(result.error ?? '단어 목록을 불러오지 못했습니다.');
+        if (!active) return;
+        const nextLists = result.lists ?? [];
+        setLists(nextLists);
+        const requestedId = Number(new URLSearchParams(window.location.search).get('list'));
+        const requestedList = nextLists.find((list) => list.id === requestedId);
+        if (requestedList) void selectList(requestedList);
+      })
+      .catch((error) => { if (active) setMessage(error instanceof Error ? error.message : '단어 목록을 불러오지 못했습니다.'); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, []);
 
   if (selected) {
     return (
       <section className="mt-7" aria-labelledby="word-list-title">
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3"><button type="button" onClick={() => setSelectedId(null)} aria-label="일일 단어 리스트로 돌아가기" className="grid size-10 shrink-0 place-items-center rounded-xl border border-[#ded7ca] bg-[#fffdf8] text-[#52605b] hover:bg-[#f4f0e8]"><ArrowLeft className="size-4" aria-hidden="true" /></button><div><p className="text-xs font-bold tracking-[0.14em] text-[#d76a47]">{selected.label.toUpperCase()} VOCABULARY</p><h2 id="word-list-title" className="mt-1 font-serif text-2xl sm:text-3xl">{selected.date}</h2></div></div>
-          <span className={selected.status === '학습 완료' ? 'rounded-full bg-[#e8f0eb] px-3 py-1.5 text-xs font-semibold text-[#38634f]' : 'rounded-full bg-[#f8eadf] px-3 py-1.5 text-xs font-semibold text-[#bd5d3e]'}>{selected.count}개 · {selected.status}</span>
+          <div className="flex items-center gap-3"><button type="button" onClick={() => { setSelected(null); setWords([]); window.history.replaceState(null, '', '/voca/list'); }} aria-label="단어 목록으로 돌아가기" className="grid size-10 shrink-0 place-items-center rounded-xl border border-[#ded7ca] bg-[#fffdf8] text-[#52605b] transition-transform hover:bg-[#f4f0e8] active:scale-95"><ArrowLeft className="size-4" aria-hidden="true" /></button><div><p className="text-xs font-bold tracking-[0.14em] text-[#d76a47]">{selected.scope === 'common' ? 'COMMON VOCABULARY' : 'MY VOCABULARY'}</p><h2 id="word-list-title" className="mt-1 font-serif text-2xl sm:text-3xl">{selected.title}</h2></div></div>
+          <span className="rounded-full bg-[#e8f0eb] px-3 py-1.5 text-xs font-semibold text-[#38634f]">{selected.wordCount}개 · {selected.scope === 'common' ? '공통' : '개인'}</span>
         </div>
-        <div className="overflow-hidden rounded-3xl border border-[#dcd6ca] bg-[#fffdf8] shadow-[0_18px_48px_rgba(35,44,43,0.05)]">
-          {selected.words.map((item, index) => <article key={item.word} className="grid grid-cols-[minmax(0,.9fr)_minmax(0,1.1fr)] items-center gap-3 border-b border-[#e7e0d5] px-5 py-5 last:border-b-0 sm:gap-8 sm:px-7"><div className="flex min-w-0 items-baseline gap-2 sm:gap-3"><span className="w-4 shrink-0 text-xs font-semibold text-[#a3aaa5] sm:w-5">{index + 1}</span><FittedWord word={item.word} /></div><div className="border-l border-[#e9e1d6] pl-3 text-sm leading-6 text-[#59645e] sm:pl-7 sm:text-base sm:leading-7">{item.meanings.map((meaning, meaningIndex) => <p key={`${meaning.partOfSpeech}-${meaning.text}`} className="flex gap-2"><span className="w-7 shrink-0 font-semibold text-[#d76a47]">{meaningIndex === 0 || item.meanings[meaningIndex - 1].partOfSpeech !== meaning.partOfSpeech ? meaning.partOfSpeech : ''}</span><span>{meaning.text}</span></p>)}</div></article>)}
-        </div>
+        {detailLoading ? <p className="rounded-3xl border border-[#ded7ca] bg-[#fffdf8] px-5 py-12 text-center text-sm text-[#77807a]">단어를 불러오는 중입니다.</p> : <div className="overflow-hidden rounded-3xl border border-[#dcd6ca] bg-[#fffdf8] shadow-[0_18px_48px_rgba(35,44,43,0.05)]">{words.map((item, index) => <article key={item.id} className="grid grid-cols-[minmax(0,.9fr)_minmax(0,1.1fr)] items-center gap-3 border-b border-[#e7e0d5] px-5 py-5 last:border-b-0 sm:gap-8 sm:px-7"><div className="flex min-w-0 items-baseline gap-2 sm:gap-3"><span className="w-4 shrink-0 text-xs font-semibold text-[#a3aaa5] sm:w-5">{index + 1}</span><FittedWord word={item.word} /></div><div className="border-l border-[#e9e1d6] pl-3 text-sm leading-6 text-[#59645e] sm:pl-7 sm:text-base sm:leading-7">{item.meanings.map((meaning, meaningIndex) => <p key={`${meaning.partOfSpeech}-${meaning.text}`} className="flex gap-2"><span className="w-9 shrink-0 font-semibold text-[#d76a47]">{meaningIndex === 0 || item.meanings[meaningIndex - 1].partOfSpeech !== meaning.partOfSpeech ? partOfSpeechLabel(meaning.partOfSpeech) : ''}</span><span>{meaning.text}</span></p>)}</div></article>)}</div>}
       </section>
     );
   }
 
   return (
-    <section className="mt-7 max-w-3xl" aria-labelledby="daily-list-title"><div className="mb-4 flex items-center gap-2"><ListChecks className="size-4 text-[#d76a47]" aria-hidden="true" /><h2 id="daily-list-title" className="font-serif text-2xl">일일 단어 리스트</h2></div><div className="space-y-3">{lists.map((list) => { const completed = list.status === '학습 완료'; return <button key={list.id} type="button" onClick={() => setSelectedId(list.id)} className="flex w-full items-center gap-4 rounded-2xl border border-[#ded7ca] bg-[#fffdf8] p-4 text-left shadow-[0_8px_20px_rgba(35,44,43,0.035)] hover:border-[#e6b7a5] hover:bg-[#fff8f4]"><span className={completed ? 'grid size-10 shrink-0 place-items-center rounded-xl bg-[#e8f0eb] text-[#38634f]' : 'grid size-10 shrink-0 place-items-center rounded-xl bg-[#f1ede5] text-[#777f79]'}>{completed ? <CheckCircle2 className="size-5" aria-hidden="true" /> : <Sparkles className="size-5" aria-hidden="true" />}</span><span className="min-w-0 flex-1"><span className="flex items-center gap-2"><span className="font-semibold">{list.date}</span><span className="text-xs text-[#8a918b]">{list.label}</span></span><span className="mt-1 block text-sm text-[#6e7772]">{list.count}개 · {list.status}</span></span><ChevronRight className="size-4 shrink-0 text-[#929993]" aria-hidden="true" /></button>; })}</div></section>
+    <section className="mt-7 max-w-3xl" aria-labelledby="saved-list-title">
+      <div className="mb-4 flex items-center gap-2"><ListChecks className="size-4 text-[#d76a47]" aria-hidden="true" /><h2 id="saved-list-title" className="font-serif text-2xl">저장된 단어 리스트</h2></div>
+      {loading ? <p className="rounded-2xl border border-[#ded7ca] bg-[#fffdf8] px-5 py-10 text-center text-sm text-[#77807a]">목록을 불러오는 중입니다.</p> : lists.length ? <div className="space-y-3">{lists.map((list) => <button key={list.id} type="button" onClick={() => void selectList(list)} className="flex w-full items-center gap-4 rounded-2xl border border-[#ded7ca] bg-[#fffdf8] p-4 text-left shadow-[0_8px_20px_rgba(35,44,43,0.035)] transition-colors hover:border-[#e6b7a5] hover:bg-[#fff8f4]"><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#e8f0eb] text-[#38634f]"><BookOpenCheck className="size-5" aria-hidden="true" /></span><span className="min-w-0 flex-1"><span className="flex items-center gap-2"><span className="truncate font-semibold">{list.title}</span><span className="shrink-0 text-xs text-[#8a918b]">{list.scope === 'common' ? '공통' : '개인'}</span></span><span className="mt-1 block text-sm text-[#6e7772]">{list.wordCount}개</span></span><ChevronRight className="size-4 shrink-0 text-[#929993]" aria-hidden="true" /></button>)}</div> : <div className="rounded-3xl border border-dashed border-[#d8d0c3] bg-[#fbf9f4] px-6 py-12 text-center"><BookOpenCheck className="mx-auto size-6 text-[#9ba39d]" aria-hidden="true" /><p className="mt-4 font-semibold text-[#52605b]">아직 불러온 단어 목록이 없습니다.</p><p className="mt-2 text-sm leading-6 text-[#7a827d]">VOCA 상단의 + 버튼에서 공통 목록을 추가하거나, 개인 단어 목록을 만들어 보세요.</p></div>}
+      {message && <p role="alert" className="mt-4 rounded-xl bg-[#f9e8e1] px-3 py-2 text-sm text-[#a9492b]">{message}</p>}
+    </section>
   );
 }
