@@ -20,7 +20,7 @@ const navigation: Array<{ label: AppSection; href: string; icon: LucideIcon }> =
   { label: 'VOCA', href: '/voca', icon: SpellCheck },
   { label: 'READING', href: '/#reading', icon: BookOpen },
   { label: 'LISTENING', href: '/#listening', icon: Headphones },
-  { label: 'WRITING', href: '/#writing', icon: PenLine },
+  { label: 'WRITING', href: '/writing', icon: PenLine },
   { label: 'SPEAKING', href: '/#speaking', icon: Mic },
 ];
 
