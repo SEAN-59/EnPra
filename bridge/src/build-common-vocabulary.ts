@@ -230,7 +230,7 @@ async function getCounts(client: PoolClient, runId: string) {
 
 async function getActiveBatch(client: PoolClient, runId: string) {
   const result = await client.query<{ build_batch: string; word_count: string }>(
-    `SELECT build_batch::text, count(*)::text
+    `SELECT build_batch::text, count(*)::text AS word_count
      FROM vocabulary_build_candidates
      WHERE run_id = $1
      GROUP BY build_batch
