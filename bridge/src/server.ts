@@ -1,5 +1,5 @@
 import { serve } from '@hono/node-server';
-import { timingSafeEqual } from 'node:crypto';
+import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { Hono } from 'hono';
@@ -26,6 +26,16 @@ type GeneratedVocabularyWord = {
   normalizedWord: string;
   pronunciationIpa: string;
   senses: Array<{ partOfSpeech: string; text: string }>;
+};
+type AIVocabularyGenerationResult = { listId: number; addedCount: number; attempts: number; partial: boolean };
+type AIVocabularyGenerationJob = {
+  id: string;
+  userId: string;
+  status: 'running' | 'completed' | 'failed';
+  attempts: number;
+  result?: AIVocabularyGenerationResult;
+  error?: string;
+  updatedAt: number;
 };
 type VocabularyListRow = {
   id: string | number;
@@ -54,6 +64,7 @@ mkdirSync(dataDir, { recursive: true });
 const pool = new Pool({ connectionString: databaseUrl });
 const codex = new CodexRegistry(dataDir);
 const expectedServiceToken = Buffer.from(serviceToken);
+const aiVocabularyGenerationJobs = new Map<string, AIVocabularyGenerationJob>();
 
 function isExpectedToken(value: string | undefined) {
   if (!value) return false;
@@ -511,35 +522,14 @@ app.post('/api/vocabulary/lists/manual-entries', async (c) => {
   }
 });
 
-app.post('/api/vocabulary/lists/ai-generate', async (c) => {
-  const user = c.get('user');
-  let body: { count?: unknown };
-  try {
-    body = await c.req.json<{ count?: unknown }>();
-  } catch {
-    return c.json({ error: 'AI 생성 요청 형식이 올바르지 않습니다.' }, 400);
-  }
-  const count = typeof body.count === 'number' ? body.count : NaN;
-  if (!Number.isInteger(count) || count < 20 || count > 50 || count % 5 !== 0) {
-    return c.json({ error: '생성 개수는 20개부터 50개 사이의 5개 단위여야 합니다.' }, 400);
-  }
-
-  try {
-    const account = await codex.get(user.id).readAccount();
-    if (account?.type !== 'chatgpt') {
-      await markConnection(user.id, 'disconnected');
-      return c.json({ error: '먼저 ChatGPT OAuth 연결을 완료해 주세요.' }, 409);
-    }
-    await markConnection(user.id, 'active', account.planType);
-  } catch (error) {
-    return c.json({ error: error instanceof Error ? error.message : 'ChatGPT 연결 상태를 확인하지 못했습니다.' }, 502);
-  }
-
+async function generateAIVocabulary(user: UserContext, count: number, job: AIVocabularyGenerationJob): Promise<AIVocabularyGenerationResult> {
   const selected = new Map<string, GeneratedVocabularyWord>();
   let attempts = 0;
   let lastError: Error | null = null;
   while (selected.size < count && attempts < 5) {
     attempts += 1;
+    job.attempts = attempts;
+    job.updatedAt = Date.now();
     try {
       const completion = await codex.get(user.id).runLearningPrompt(
         vocabularyGenerationPrompt(count - selected.size, [...selected.values()].map((word) => word.word).slice(-120)),
@@ -562,7 +552,7 @@ app.post('/api/vocabulary/lists/ai-generate', async (c) => {
 
   if (!selected.size) {
     await markConnection(user.id, 'error');
-    return c.json({ error: lastError?.message ?? '중복되지 않는 새 단어를 찾지 못했습니다. 잠시 후 다시 시도해 주세요.' }, 502);
+    throw lastError ?? new Error('중복되지 않는 새 단어를 찾지 못했습니다. 잠시 후 다시 시도해 주세요.');
   }
 
   const client = await pool.connect();
@@ -598,14 +588,63 @@ app.post('/api/vocabulary/lists/ai-generate', async (c) => {
       sortOrder += 1;
     }
     await client.query('COMMIT');
-    return c.json({ listId, addedCount: selected.size, attempts, partial: selected.size < count });
+    return { listId, addedCount: selected.size, attempts, partial: selected.size < count };
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('AI vocabulary generation storage failed', { userId: user.id, message: error instanceof Error ? error.message : String(error) });
-    return c.json({ error: 'AI 단어를 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.' }, 500);
+    throw new Error('AI 단어를 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.');
   } finally {
     client.release();
   }
+}
+
+app.post('/api/vocabulary/lists/ai-generate', async (c) => {
+  const user = c.get('user');
+  let body: { count?: unknown };
+  try {
+    body = await c.req.json<{ count?: unknown }>();
+  } catch {
+    return c.json({ error: 'AI 생성 요청 형식이 올바르지 않습니다.' }, 400);
+  }
+  const count = typeof body.count === 'number' ? body.count : NaN;
+  if (!Number.isInteger(count) || count < 20 || count > 50 || count % 5 !== 0) {
+    return c.json({ error: '생성 개수는 20개부터 50개 사이의 5개 단위여야 합니다.' }, 400);
+  }
+
+  try {
+    const account = await codex.get(user.id).readAccount();
+    if (account?.type !== 'chatgpt') {
+      await markConnection(user.id, 'disconnected');
+      return c.json({ error: '먼저 ChatGPT OAuth 연결을 완료해 주세요.' }, 409);
+    }
+    await markConnection(user.id, 'active', account.planType);
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : 'ChatGPT 연결 상태를 확인하지 못했습니다.' }, 502);
+  }
+
+  const existingJob = [...aiVocabularyGenerationJobs.values()].find((job) => job.userId === user.id && job.status === 'running');
+  if (existingJob) return c.json({ jobId: existingJob.id, status: existingJob.status }, 202);
+
+  const job: AIVocabularyGenerationJob = {
+    id: randomUUID(), userId: user.id, status: 'running', attempts: 0, updatedAt: Date.now(),
+  };
+  aiVocabularyGenerationJobs.set(job.id, job);
+  void generateAIVocabulary(user, count, job)
+    .then((result) => { job.status = 'completed'; job.result = result; job.updatedAt = Date.now(); })
+    .catch((error) => { job.status = 'failed'; job.error = error instanceof Error ? error.message : 'AI 단어 생성에 실패했습니다.'; job.updatedAt = Date.now(); });
+  return c.json({ jobId: job.id, status: job.status }, 202);
+});
+
+app.get('/api/vocabulary/generation/:jobId', (c) => {
+  const user = c.get('user');
+  const job = aiVocabularyGenerationJobs.get(c.req.param('jobId'));
+  if (!job || job.userId !== user.id) return c.json({ error: 'AI 생성 작업을 찾을 수 없습니다.' }, 404);
+  return c.json({
+    status: job.status,
+    attempts: job.attempts,
+    ...(job.status === 'completed' ? job.result : {}),
+    ...(job.status === 'failed' ? { error: job.error ?? 'AI 단어 생성에 실패했습니다.' } : {}),
+  });
 });
 
 app.post('/api/vocabulary/words', async (c) => {

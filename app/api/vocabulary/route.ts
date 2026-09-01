@@ -43,6 +43,11 @@ export async function GET(request: NextRequest) {
 
   const mode = request.nextUrl.searchParams.get('mode');
   if (mode === 'catalog') return forwardToBridge('/api/vocabulary/catalog', 'GET', user);
+  if (mode === 'generation') {
+    const jobId = request.nextUrl.searchParams.get('jobId');
+    if (!jobId || !/^[0-9a-f-]{36}$/i.test(jobId)) return Response.json({ error: '올바른 AI 생성 작업이 아닙니다.' }, { status: 400 });
+    return forwardToBridge(`/api/vocabulary/generation/${jobId}`, 'GET', user);
+  }
   return forwardToBridge('/api/vocabulary/lists', 'GET', user);
 }
 
