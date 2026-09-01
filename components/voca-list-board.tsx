@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowLeft, BookOpenCheck, ListChecks, Settings, Trash2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, BookOpenCheck, ListChecks, Settings, Trash2 } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { toast } from '@/components/ui/toast';
 
@@ -12,9 +12,11 @@ type VocabularyList = {
   learningDate: string | null;
   wordCount: number;
 };
-type VocabularyWord = { id: number; word: string; pronunciationIpa: string; meanings: Array<{ partOfSpeech: string; text: string }> };
+type LearningStatus = 'needed' | 'completed' | null;
+type VocabularyWord = { id: number; word: string; pronunciationIpa: string; learningStatus: LearningStatus; isImportant: boolean; meanings: Array<{ partOfSpeech: string; text: string }> };
 type ListsResponse = { lists?: VocabularyList[]; error?: string };
 type DetailResponse = { list?: VocabularyList; words?: VocabularyWord[]; error?: string };
+type WordStatusResponse = { wordId: number; learningStatus: LearningStatus; isImportant: boolean; error?: string };
 
 function FittedWord({ word, pronunciationIpa }: Pick<VocabularyWord, 'word' | 'pronunciationIpa'>) {
   const wordRef = useRef<HTMLHeadingElement>(null);
@@ -45,6 +47,19 @@ function partOfSpeechLabel(value: string) {
   return labels[value] ?? value;
 }
 
+function MaterialSymbol({ children }: { children: string }) {
+  return <span className="material-symbols-rounded text-[18px]" aria-hidden="true">{children}</span>;
+}
+
+function WordStatusButtons({ word, pending, onChange }: { word: VocabularyWord; pending: boolean; onChange: (changes: Partial<Pick<VocabularyWord, 'learningStatus' | 'isImportant'>>) => void }) {
+  const buttonClass = 'grid size-7 place-items-center rounded-full transition-colors disabled:cursor-wait disabled:opacity-50 sm:size-8';
+  return <div className="absolute right-2 top-2 flex items-center gap-1 sm:right-4 sm:top-3" aria-label={`${word.word} 학습 상태`}>
+    <button type="button" aria-label="학습 완료" title="학습 완료" aria-pressed={word.learningStatus === 'completed'} disabled={pending} onClick={() => onChange({ learningStatus: word.learningStatus === 'completed' ? null : 'completed' })} className={`${buttonClass} ${word.learningStatus === 'completed' ? 'bg-[#e4f2e8] text-[#2c7750]' : 'text-[#a5aca7] hover:bg-[#edf4ef] hover:text-[#40785a]'}`}><MaterialSymbol>check_circle</MaterialSymbol></button>
+    <button type="button" aria-label="학습 필요" title="학습 필요" aria-pressed={word.learningStatus === 'needed'} disabled={pending} onClick={() => onChange({ learningStatus: word.learningStatus === 'needed' ? null : 'needed' })} className={`${buttonClass} ${word.learningStatus === 'needed' ? 'bg-[#fff0e9] text-[#c86442]' : 'text-[#a5aca7] hover:bg-[#fff3ed] hover:text-[#c86442]'}`}><MaterialSymbol>pending_actions</MaterialSymbol></button>
+    <button type="button" aria-label="중요 단어" title="중요 단어" aria-pressed={word.isImportant} disabled={pending} onClick={() => onChange({ isImportant: !word.isImportant })} className={`${buttonClass} ${word.isImportant ? 'bg-[#fff3c9] text-[#a97408]' : 'text-[#a5aca7] hover:bg-[#fff7dd] hover:text-[#a97408]'}`}><MaterialSymbol>star</MaterialSymbol></button>
+  </div>;
+}
+
 async function readResponse<T>(response: Response): Promise<T> {
   const text = await response.text();
   try { return JSON.parse(text) as T; } catch { throw new Error(text || '요청을 처리하지 못했습니다.'); }
@@ -58,6 +73,7 @@ export function VocaListBoard() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [listMenuId, setListMenuId] = useState<number | null>(null);
   const [removingListId, setRemovingListId] = useState<number | null>(null);
+  const [statusWordId, setStatusWordId] = useState<number | null>(null);
 
   async function selectList(list: VocabularyList) {
     setDetailLoading(true);
@@ -90,6 +106,24 @@ export function VocaListBoard() {
       toast.add({ title: '단어 목록을 지우지 못했어요.', description: error instanceof Error ? error.message : '잠시 후 다시 시도해 주세요.', type: 'error', priority: 'high' });
     } finally {
       setRemovingListId(null);
+    }
+  }
+
+  async function updateWordStatus(word: VocabularyWord, changes: Partial<Pick<VocabularyWord, 'learningStatus' | 'isImportant'>>) {
+    setStatusWordId(word.id);
+    try {
+      const response = await fetch('/api/vocabulary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'status', wordId: word.id, ...changes }),
+      });
+      const result = await readResponse<WordStatusResponse>(response);
+      if (!response.ok) throw new Error(result.error ?? '단어 상태를 저장하지 못했습니다.');
+      setWords((current) => current.map((item) => item.id === word.id ? { ...item, learningStatus: result.learningStatus, isImportant: result.isImportant } : item));
+    } catch (error) {
+      toast.add({ title: '단어 상태를 저장하지 못했어요.', description: error instanceof Error ? error.message : '잠시 후 다시 시도해 주세요.', type: 'error', priority: 'high' });
+    } finally {
+      setStatusWordId(null);
     }
   }
 
@@ -132,9 +166,9 @@ export function VocaListBoard() {
       <section className="mt-7" aria-labelledby="word-list-title">
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3"><button type="button" onClick={() => { setSelected(null); setWords([]); window.history.replaceState(null, '', '/voca/list'); }} aria-label="단어 목록으로 돌아가기" className="grid size-10 shrink-0 place-items-center rounded-xl border border-[#ded7ca] bg-[#fffdf8] text-[#52605b] transition-transform hover:bg-[#f4f0e8] active:scale-95"><ArrowLeft className="size-4" aria-hidden="true" /></button><div><p className="text-xs font-bold tracking-[0.14em] text-[#d76a47]">{selected.scope === 'common' ? 'COMMON VOCABULARY' : 'MY VOCABULARY'}</p><h2 id="word-list-title" className="mt-1 font-serif text-2xl sm:text-3xl">{selected.title}</h2></div></div>
-          <span className="rounded-full bg-[#e8f0eb] px-3 py-1.5 text-xs font-semibold text-[#38634f]">{selected.wordCount}개 · {selected.scope === 'common' ? '공통' : '개인'}</span>
+          <button type="button" onClick={() => toast.add({ title: '이 목록으로 학습을 시작할 준비 중입니다.', type: 'info' })} className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-[#1d2935] px-3 text-xs font-semibold text-[#fffdf8] transition-transform hover:bg-[#344451] active:scale-95">학습하기 <ArrowRight className="size-3.5" aria-hidden="true" /></button>
         </div>
-        {detailLoading ? <p className="rounded-3xl border border-[#ded7ca] bg-[#fffdf8] px-5 py-12 text-center text-sm text-[#77807a]">단어를 불러오는 중입니다.</p> : <div className="overflow-hidden rounded-3xl border border-[#dcd6ca] bg-[#fffdf8] shadow-[0_18px_48px_rgba(35,44,43,0.05)]">{words.map((item, index) => <article key={item.id} className="grid grid-cols-[minmax(0,.9fr)_minmax(0,1.1fr)] items-center gap-3 border-b border-[#e7e0d5] px-5 py-5 last:border-b-0 sm:gap-8 sm:px-7"><div className="flex min-w-0 items-center gap-2 sm:gap-3"><span className="w-4 shrink-0 text-xs font-semibold text-[#a3aaa5] sm:w-5">{index + 1}</span><FittedWord word={item.word} pronunciationIpa={item.pronunciationIpa} /></div><div className="border-l border-[#e9e1d6] pl-3 text-sm leading-6 text-[#59645e] sm:pl-7 sm:text-base sm:leading-7">{item.meanings.map((meaning, meaningIndex) => <p key={`${meaning.partOfSpeech}-${meaning.text}`} className="flex gap-2"><span className="w-9 shrink-0 font-semibold text-[#d76a47]">{meaningIndex === 0 || item.meanings[meaningIndex - 1].partOfSpeech !== meaning.partOfSpeech ? partOfSpeechLabel(meaning.partOfSpeech) : ''}</span><span>{meaning.text}</span></p>)}</div></article>)}</div>}
+        {detailLoading ? <p className="rounded-3xl border border-[#ded7ca] bg-[#fffdf8] px-5 py-12 text-center text-sm text-[#77807a]">단어를 불러오는 중입니다.</p> : <div className="overflow-hidden rounded-3xl border border-[#dcd6ca] bg-[#fffdf8] shadow-[0_18px_48px_rgba(35,44,43,0.05)]">{words.map((item, index) => <article key={item.id} className="grid grid-cols-[minmax(0,.9fr)_minmax(0,1.1fr)] items-center gap-3 border-b border-[#e7e0d5] px-5 py-5 last:border-b-0 sm:gap-8 sm:px-7"><div className="flex min-w-0 items-center gap-2 sm:gap-3"><span className="w-4 shrink-0 text-xs font-semibold text-[#a3aaa5] sm:w-5">{index + 1}</span><FittedWord word={item.word} pronunciationIpa={item.pronunciationIpa} /></div><div className="relative self-stretch border-l border-[#e9e1d6] pl-3 pt-9 text-sm leading-6 text-[#59645e] sm:pl-7 sm:pt-10 sm:text-base sm:leading-7"><WordStatusButtons word={item} pending={statusWordId === item.id} onChange={(changes) => void updateWordStatus(item, changes)} />{item.meanings.map((meaning, meaningIndex) => <p key={`${meaning.partOfSpeech}-${meaning.text}`} className="flex gap-2"><span className="w-9 shrink-0 font-semibold text-[#d76a47]">{meaningIndex === 0 || item.meanings[meaningIndex - 1].partOfSpeech !== meaning.partOfSpeech ? partOfSpeechLabel(meaning.partOfSpeech) : ''}</span><span>{meaning.text}</span></p>)}</div></article>)}</div>}
       </section>
     );
   }

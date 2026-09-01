@@ -9,5 +9,5 @@ const serif = Source_Serif_4({ variable: '--font-enpra-serif', subsets: ['latin'
 export const metadata: Metadata = { title: 'EnPra — English Practice', description: 'A calm, personal space for daily English practice.' };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en"><body className={`${sans.variable} ${serif.variable} antialiased`}><Toaster>{children}</Toaster></body></html>;
+  return <html lang="en"><head><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400,0..1,0" /></head><body className={`${sans.variable} ${serif.variable} antialiased`}><Toaster>{children}</Toaster></body></html>;
 }

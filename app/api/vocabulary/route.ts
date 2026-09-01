@@ -67,6 +67,14 @@ export async function POST(request: NextRequest) {
     return forwardToBridge('/api/vocabulary/lists/manual-entries', 'POST', user, JSON.stringify(manualWords));
   }
 
+  if (body && typeof body === 'object' && (body as { action?: unknown }).action === 'status') {
+    const { action: _action, wordId, learningStatus, isImportant } = body as { action: 'status'; wordId?: unknown; learningStatus?: unknown; isImportant?: unknown };
+    if (typeof wordId !== 'number' || !Number.isSafeInteger(wordId) || wordId < 1) {
+      return Response.json({ error: '올바른 단어 상태 요청이 아닙니다.' }, { status: 400 });
+    }
+    return forwardToBridge(`/api/vocabulary/words/${wordId}/status`, 'POST', user, JSON.stringify({ learningStatus, isImportant }));
+  }
+
   const listId = body && typeof body === 'object' ? (body as { listId?: unknown }).listId : undefined;
 
   if (typeof listId !== 'number' || !Number.isSafeInteger(listId) || listId < 1) {

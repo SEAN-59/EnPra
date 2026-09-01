@@ -21,6 +21,10 @@ type ManualVocabularyBatchRequest = {
   listTitle?: unknown;
   words?: unknown;
 };
+type VocabularyStatusRequest = {
+  learningStatus?: unknown;
+  isImportant?: unknown;
+};
 type VocabularyListRow = {
   id: string | number;
   title: string;
@@ -600,6 +604,59 @@ app.post('/api/vocabulary/words', async (c) => {
   }
 });
 
+app.post('/api/vocabulary/words/:wordId/status', async (c) => {
+  const user = c.get('user');
+  const wordId = Number(c.req.param('wordId'));
+  if (!Number.isSafeInteger(wordId) || wordId < 1) return c.json({ error: '올바른 단어 상태 요청이 아닙니다.' }, 400);
+
+  let body: VocabularyStatusRequest;
+  try {
+    body = await c.req.json<VocabularyStatusRequest>();
+  } catch {
+    return c.json({ error: '단어 상태 요청 형식이 올바르지 않습니다.' }, 400);
+  }
+
+  const hasLearningStatus = Object.prototype.hasOwnProperty.call(body, 'learningStatus');
+  const hasImportant = Object.prototype.hasOwnProperty.call(body, 'isImportant');
+  const learningStatus = body.learningStatus === null || body.learningStatus === 'needed' || body.learningStatus === 'completed' ? body.learningStatus : undefined;
+  if (!hasLearningStatus && !hasImportant) return c.json({ error: '변경할 단어 상태를 선택해 주세요.' }, 400);
+  if (hasLearningStatus && learningStatus === undefined) return c.json({ error: '올바른 학습 상태가 아닙니다.' }, 400);
+  if (hasImportant && typeof body.isImportant !== 'boolean') return c.json({ error: '올바른 중요 상태가 아닙니다.' }, 400);
+
+  const word = await pool.query('SELECT 1 FROM vocabulary_words WHERE id = $1', [wordId]);
+  if (!word.rowCount) return c.json({ error: '존재하지 않는 단어입니다.' }, 404);
+
+  const current = await pool.query<{ learning_status: 'needed' | 'completed' | null; is_important: boolean }>(
+    `SELECT learning_status, is_important
+     FROM user_vocabulary_word_status
+     WHERE user_id = $1 AND word_id = $2`,
+    [user.id, wordId],
+  );
+  const nextLearningStatus = hasLearningStatus ? learningStatus as 'needed' | 'completed' | null : current.rows[0]?.learning_status ?? null;
+  const nextImportant = hasImportant ? body.isImportant as boolean : current.rows[0]?.is_important ?? false;
+
+  if (nextLearningStatus === null && !nextImportant) {
+    await pool.query('DELETE FROM user_vocabulary_word_status WHERE user_id = $1 AND word_id = $2', [user.id, wordId]);
+  } else {
+    await pool.query(
+      `INSERT INTO user_vocabulary_word_status (user_id, word_id, learning_status, is_important, learning_status_updated_at)
+       VALUES ($1, $2, $3, $4, CASE WHEN $3 IS NULL THEN NULL ELSE NOW() END)
+       ON CONFLICT (user_id, word_id) DO UPDATE
+       SET learning_status = EXCLUDED.learning_status,
+           is_important = EXCLUDED.is_important,
+           learning_status_updated_at = CASE
+             WHEN user_vocabulary_word_status.learning_status IS DISTINCT FROM EXCLUDED.learning_status
+             THEN CASE WHEN EXCLUDED.learning_status IS NULL THEN NULL ELSE NOW() END
+             ELSE user_vocabulary_word_status.learning_status_updated_at
+           END,
+           updated_at = NOW()`,
+      [user.id, wordId, nextLearningStatus, nextImportant],
+    );
+  }
+
+  return c.json({ wordId, learningStatus: nextLearningStatus, isImportant: nextImportant });
+});
+
 app.get('/api/vocabulary/lists/:listId', async (c) => {
   const user = c.get('user');
   const listId = Number(c.req.param('listId'));
@@ -608,13 +665,15 @@ app.get('/api/vocabulary/lists/:listId', async (c) => {
   const list = await getAccessibleVocabularyList(user.id, listId);
   if (!list) return c.json({ error: '접근할 수 없는 단어 목록입니다.' }, 404);
 
-  const words = await pool.query<{ id: string | number; word: string; pronunciation_ipa: string; sort_order: number }>(
-    `SELECT w.id, w.word, w.pronunciation_ipa, li.sort_order
+  const words = await pool.query<{ id: string | number; word: string; pronunciation_ipa: string; sort_order: number; learning_status: 'needed' | 'completed' | null; is_important: boolean }>(
+    `SELECT w.id, w.word, w.pronunciation_ipa, li.sort_order,
+            s.learning_status, COALESCE(s.is_important, FALSE) AS is_important
      FROM vocabulary_list_items li
      JOIN vocabulary_words w ON w.id = li.word_id
+     LEFT JOIN user_vocabulary_word_status s ON s.word_id = w.id AND s.user_id = $2
      WHERE li.list_id = $1
      ORDER BY li.sort_order ASC`,
-    [listId],
+    [listId, user.id],
   );
   const senses = await pool.query<{ word_id: string | number; part_of_speech: string; meaning_ko: string; sort_order: number }>(
     `SELECT s.word_id, s.part_of_speech, s.meaning_ko, s.sort_order
@@ -638,6 +697,8 @@ app.get('/api/vocabulary/lists/:listId', async (c) => {
       id: Number(word.id),
       word: word.word,
       pronunciationIpa: word.pronunciation_ipa,
+      learningStatus: word.learning_status,
+      isImportant: word.is_important,
       meanings: sensesByWord.get(Number(word.id)) ?? [],
     })),
   });

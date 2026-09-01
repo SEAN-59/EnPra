@@ -52,6 +52,18 @@ body { font-family: var(--font-enpra-sans), Arial, sans-serif; }
 
 .font-serif { font-family: var(--font-enpra-serif), Georgia, serif; }
 
+.material-symbols-rounded {
+  font-family: 'Material Symbols Rounded';
+  font-style: normal;
+  font-weight: normal;
+  line-height: 1;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  font-feature-settings: 'liga';
+  -webkit-font-smoothing: antialiased;
+}
+
 @media (prefers-reduced-motion: no-preference) {
   button:not(:disabled),
   [data-slot='button']:not([aria-disabled='true']) {
