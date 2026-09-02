@@ -619,7 +619,7 @@ export function WritingPracticeClient() {
             </p>
           </button>
         </div>
-        <div className="mt-4 flex flex-wrap items-center gap-3">
+        <div className="mt-4 flex flex-wrap items-center justify-end gap-3">
           <button
             type="button"
             disabled={Boolean(activeSession) || busy}
