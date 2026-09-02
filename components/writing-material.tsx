@@ -368,7 +368,7 @@ function MapPanels({ panels }: { panels: Record<string, unknown>[] }) {
               {label(panel.label, index === 0 ? 'Before' : 'After')}
             </figcaption>
             <svg
-              viewBox="0 0 100 72"
+              viewBox="0 0 100 100"
               className="h-auto w-full rounded-xl bg-[#eaf0eb]"
               role="img"
               aria-label={label(panel.label, '지도 자료')}
@@ -385,7 +385,7 @@ function MapPanels({ panels }: { panels: Record<string, unknown>[] }) {
                   <path d="M0,0 L6,3 L0,6 Z" fill="#d76a47" />
                 </marker>
               </defs>
-              <rect width="100" height="72" fill="#eaf0eb" />
+              <rect width="100" height="100" fill="#eaf0eb" />
               {mapFeatures.map((feature, featureIndex) => (
                 <MapFeature
                   key={featureIndex}
