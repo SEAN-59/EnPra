@@ -9,6 +9,11 @@ type PublicLevel = 'foundation' | '5.0' | '5.5' | '6.0' | '6.5' | '7.0';
 type SessionType = 'learning' | 'test' | 'promotion_test' | 'placement_test';
 type TaskType = 'task1' | 'task2' | 'foundation';
 type IELTSWritingTask = 'task1' | 'task2';
+type LearningMode = 'standard' | 'reinforcement';
+type FocusSkill = {
+  code: string;
+  taskScope: 'task1' | 'task2' | 'both' | 'foundation';
+};
 
 const WRITING_RULE_VERSION = 'v3';
 
@@ -588,6 +593,7 @@ async function createQuestion(
   exerciseType: string,
   difficulty: string,
   purpose = 'general',
+  requiredSkillCodes: string[] = [],
 ) {
   const format =
     taskType === 'task1'
@@ -599,9 +605,20 @@ async function createQuestion(
     taskType === 'task1'
       ? `자료는 반드시 세부 유형에 맞는 아래 JSON 구조로 작성하세요. 숫자는 문자열이 아닌 숫자로 넣고 단위는 material.unit에 따로 넣으세요. 이 데이터는 코드가 SVG로 정확히 그리므로, 설명문이 아닌 위치·라벨·연결 관계를 빠짐없이 입력해야 합니다.\nbar_chart 또는 line_chart: {\"title\":\"\",\"description\":\"\",\"unit\":\"%|millions|…\",\"categories\":[\"2010\",\"2015\"],\"series\":[{\"name\":\"\",\"data\":[12,18]}]}\npie_chart 또는 table: {\"title\":\"\",\"description\":\"\",\"unit\":\"%|…\",\"rows\":[{\"label\":\"\",\"value\":35}]}\nmap: {\"title\":\"\",\"description\":\"\",\"mapPanels\":[{\"label\":\"Before\",\"features\":[{\"type\":\"road|river|path|area|building|bridge|label|arrow\",\"label\":\"Road|Bridge|실제 명칭\",\"x\":20,\"y\":18,\"width\":20,\"height\":12,\"points\":[[10,20],[70,20]],\"color\":\"#38634f\"}]}]}. 좌표는 가로·세로 모두 0~100 범위이며, 모든 요소와 라벨은 캔버스를 넘지 않게 배치하세요. road와 bridge는 반드시 label을 넣으세요. road·river·path·bridge·arrow는 points, area·building·label은 x/y와 필요시 width/height를 사용하세요. 도로는 실제 연결 관계가 분명할 때만 넣고, 교차·연결 위치를 points로 정확히 표현하세요. 다리는 반드시 type=bridge로 지정하세요. 비교 문제면 Before와 After를 모두 넣으세요.\ndiagram: {\"title\":\"\",\"description\":\"\",\"steps\":[{\"label\":\"\",\"description\":\"\"}]}. steps는 실제 공정 순서대로 입력하고, 각 단계의 핵심 변화가 보이도록 짧고 정확하게 작성하세요.\n자료는 문제 지시문과 모순되지 않도록 하고 분석 가능한 핵심 특징과 비교가 나타나게 만드세요.`
       : 'Task 2와 FOUNDATION은 자료 없이 material을 {}로 반환하세요.';
+  const requestedSkills = requiredSkillCodes.filter((code) =>
+    skills.some(([skillCode]) => skillCode === code),
+  );
   const prompt = `EnPra IELTS Writing 문제를 하나 만드세요. JSON만 반환하세요.\n유형: ${taskType}; 세부 유형: ${format}; 난이도: ${difficulty}; 용도: ${purpose}; 연습 형식: ${exerciseType}.\nTask 1은 객관적 자료 분석만, Task 2는 논리적 에세이만 만드세요. FOUNDATION은 영어 3문장 연습 문제입니다.\n${materialGuide}\n{\"title\":\"\",\"prompt\":\"영문 문제 지시문\",\"material\":{},\"solutionContext\":{\"keyFacts\":[\"\"],\"commonMistakes\":[\"\"]},\"skills\":[{\"code\":\"t1_overview\",\"importance\":\"primary\",\"weight\":0.5}]}`;
   const generated = jsonObject(
-    (await codex.get(user.id).runLearningPrompt(prompt)).text,
+    (
+      await codex
+        .get(user.id)
+        .runLearningPrompt(
+          requestedSkills.length
+            ? `${prompt}\n이 문제는 보강 학습용 후보이기도 합니다. skills에는 반드시 다음 스킬 중 하나 이상을 primary로 포함하세요: ${requestedSkills.join(', ')}.`
+            : prompt,
+        )
+    ).text,
   );
   const title =
     text(generated.title, 300) || `${taskType.toUpperCase()} practice`;
@@ -694,6 +711,15 @@ async function createQuestion(
       importance: string;
       weight: number;
     }> = provided.length ? provided : defaults;
+    const requiredSkill = requestedSkills.find(
+      (code) => !selectedSkills.some((skill) => skill.code === code),
+    );
+    if (requiredSkill)
+      selectedSkills.unshift({
+        code: requiredSkill,
+        importance: 'primary',
+        weight: 0.7,
+      });
     for (const row of selectedSkills)
       await client.query(
         `INSERT INTO writing_question_skills (question_id, skill_code, importance, weight) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING`,
@@ -736,6 +762,90 @@ async function chooseQuestion(
   );
 }
 
+async function chooseLearningQuestion(
+  pool: Pool,
+  codex: CodexRegistry,
+  user: UserContext,
+  taskType: TaskType,
+  exerciseType: string,
+  difficulty: string,
+  learningMode: LearningMode,
+) {
+  const result = await pool.query(
+    `SELECT q.* FROM writing_questions q WHERE q.task_type = $1 AND q.exercise_type = $2 AND q.difficulty = $3 AND q.purpose IN ('general', 'main_learning') AND q.status = 'active' AND NOT EXISTS (SELECT 1 FROM writing_session_items i JOIN writing_sessions s ON s.id = i.session_id WHERE s.user_id = $4 AND i.question_id = q.id AND s.session_type = 'learning' AND s.status = 'completed' AND COALESCE(s.learning_mode, 'standard') = $5) ORDER BY RANDOM() LIMIT 1`,
+    [taskType, exerciseType, difficulty, user.id, learningMode],
+  );
+  return (
+    (result.rows[0] as Record<string, unknown> | undefined) ??
+    createQuestion(
+      pool,
+      codex,
+      user,
+      taskType,
+      exerciseType,
+      difficulty,
+      'main_learning',
+    )
+  );
+}
+
+async function chooseReinforcementQuestion(
+  pool: Pool,
+  codex: CodexRegistry,
+  user: UserContext,
+  focusSkills: FocusSkill[],
+  internalStage: string,
+) {
+  const taskTypes: TaskType[] =
+    internalStage === 'foundation' ? ['foundation'] : ['task1', 'task2'];
+  const skillCodes = focusSkills.map((skill) => skill.code);
+  const challengeRatio = Number(
+    configForStage(internalStage).challengeRatio ?? 0,
+  );
+  const difficulty =
+    internalStage === 'foundation' || Math.random() * 100 >= challengeRatio
+      ? 'standard'
+      : 'challenge';
+  const result = await pool.query(
+    `SELECT q.*, COUNT(DISTINCT qs.skill_code)::INTEGER AS matched_skill_count FROM writing_questions q JOIN writing_question_skills qs ON qs.question_id = q.id WHERE q.task_type = ANY($1::text[]) AND q.purpose IN ('general', 'main_learning') AND q.status = 'active' AND qs.skill_code = ANY($3::text[]) AND NOT EXISTS (SELECT 1 FROM writing_session_items i JOIN writing_sessions s ON s.id = i.session_id WHERE s.user_id = $4 AND i.question_id = q.id AND s.session_type = 'learning' AND s.status = 'completed' AND COALESCE(s.learning_mode, 'standard') = 'reinforcement') GROUP BY q.id ORDER BY matched_skill_count DESC, CASE WHEN q.difficulty = $2 THEN 0 ELSE 1 END, RANDOM() LIMIT 1`,
+    [taskTypes, difficulty, skillCodes, user.id],
+  );
+  if (result.rows[0]) return result.rows[0] as Record<string, unknown>;
+
+  const focus = focusSkills.find((skill) =>
+    taskTypes.some(
+      (task) => skill.taskScope === task || skill.taskScope === 'both',
+    ),
+  );
+  const fallbackTask: TaskType =
+    internalStage === 'foundation'
+      ? 'foundation'
+      : focus?.taskScope === 'task2'
+        ? 'task2'
+        : 'task1';
+  return createQuestion(
+    pool,
+    codex,
+    user,
+    fallbackTask,
+    fallbackTask === 'foundation' ? 'foundation_guided' : fallbackTask,
+    difficulty,
+    'main_learning',
+    focus ? [focus.code] : [],
+  );
+}
+
+async function queryFocusSkills(pool: Pool, userId: string) {
+  const result = await pool.query(
+    `SELECT c.code, c.task_scope FROM user_writing_skill_states st JOIN writing_skill_catalog c ON c.code = st.skill_code WHERE st.user_id = $1 ORDER BY st.priority DESC, st.recent_effective_score_avg ASC LIMIT 5`,
+    [userId],
+  );
+  return result.rows.map((row) => ({
+    code: String(row.code),
+    taskScope: row.task_scope as FocusSkill['taskScope'],
+  })) satisfies FocusSkill[];
+}
+
 async function refreshSkillStates(pool: Pool, userId: string) {
   const profile = await queryProfile(pool, userId);
   if (!profile || profile.onboarding_status !== 'active') return;
@@ -744,7 +854,7 @@ async function refreshSkillStates(pool: Pool, userId: string) {
   try {
     await client.query('BEGIN');
     const rows = await client.query(
-      `SELECT sr.skill_code, AVG(sr.effective_score)::NUMERIC(5,2) AS average_score, COUNT(*)::INTEGER AS evidence_count, MAX(sr.attempt_result_id)::BIGINT AS last_result_id FROM writing_attempt_skill_results sr JOIN writing_attempt_results r ON r.id = sr.attempt_result_id JOIN writing_session_items i ON i.id = r.session_item_id JOIN writing_sessions s ON s.id = i.session_id WHERE s.user_id = $1 AND s.internal_stage_snapshot = $2 AND r.affects_progress = TRUE AND r.evaluated_at >= NOW() - INTERVAL '14 days' GROUP BY sr.skill_code`,
+      `SELECT sr.skill_code, AVG(sr.effective_score)::NUMERIC(5,2) AS average_score, COUNT(*)::INTEGER AS evidence_count, COUNT(*) FILTER (WHERE sr.effective_score < 70)::INTEGER AS reinforcement_count, MAX(sr.attempt_result_id)::BIGINT AS last_result_id FROM writing_attempt_skill_results sr JOIN writing_attempt_results r ON r.id = sr.attempt_result_id JOIN writing_session_items i ON i.id = r.session_item_id JOIN writing_sessions s ON s.id = i.session_id WHERE s.user_id = $1 AND s.internal_stage_snapshot = $2 AND r.affects_progress = TRUE AND r.evaluated_at >= NOW() - INTERVAL '14 days' GROUP BY sr.skill_code`,
       [userId, stage],
     );
     await client.query(
@@ -753,7 +863,7 @@ async function refreshSkillStates(pool: Pool, userId: string) {
     );
     for (const row of rows.rows)
       await client.query(
-        `INSERT INTO user_writing_skill_states (user_id, skill_code, evaluation_public_level, evaluation_internal_stage, recent_effective_score_avg, recent_evidence_count, priority, last_result_id, last_evaluated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW())`,
+        `INSERT INTO user_writing_skill_states (user_id, skill_code, evaluation_public_level, evaluation_internal_stage, recent_effective_score_avg, recent_evidence_count, recent_reinforcement_count, priority, last_result_id, last_evaluated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW())`,
         [
           userId,
           row.skill_code,
@@ -761,6 +871,7 @@ async function refreshSkillStates(pool: Pool, userId: string) {
           stage,
           row.average_score,
           row.evidence_count,
+          row.reinforcement_count,
           Math.max(1, Math.round(100 - Number(row.average_score))),
           row.last_result_id,
         ],
@@ -836,7 +947,7 @@ async function publicOverview(pool: Pool, userId: string) {
     await refreshSkillStates(pool, userId);
   const current = (await queryProfile(pool, userId)) ?? profile;
   const states = await pool.query(
-    `SELECT c.code, c.name_ko, st.recent_effective_score_avg, st.recent_evidence_count, st.priority FROM user_writing_skill_states st JOIN writing_skill_catalog c ON c.code = st.skill_code WHERE st.user_id = $1 ORDER BY st.priority DESC, st.recent_effective_score_avg ASC LIMIT 5`,
+    `SELECT c.code, c.name_ko, st.recent_effective_score_avg, st.recent_evidence_count, st.recent_reinforcement_count, st.priority FROM user_writing_skill_states st JOIN writing_skill_catalog c ON c.code = st.skill_code WHERE st.user_id = $1 ORDER BY st.priority DESC, st.recent_effective_score_avg ASC LIMIT 5`,
     [userId],
   );
   return {
@@ -857,6 +968,7 @@ async function publicOverview(pool: Pool, userId: string) {
       name: row.name_ko,
       score: Number(row.recent_effective_score_avg),
       evidenceCount: Number(row.recent_evidence_count),
+      reinforcementCount: Number(row.recent_reinforcement_count),
     })),
   };
 }
@@ -1006,6 +1118,17 @@ export async function initializeWritingDatabase(pool: Pool) {
     CREATE INDEX IF NOT EXISTS writing_session_items_session_idx ON writing_session_items(session_id,item_order);
     CREATE INDEX IF NOT EXISTS writing_attempt_results_progress_idx ON writing_attempt_results(affects_progress,evaluated_at DESC);
     CREATE INDEX IF NOT EXISTS writing_attempt_skill_results_skill_idx ON writing_attempt_skill_results(skill_code,effective_score);
+  `);
+  await pool.query(`
+    ALTER TABLE writing_sessions ADD COLUMN IF NOT EXISTS learning_mode TEXT NOT NULL DEFAULT 'standard';
+    ALTER TABLE user_writing_skill_states ADD COLUMN IF NOT EXISTS recent_reinforcement_count INTEGER NOT NULL DEFAULT 0;
+    DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'writing_sessions_learning_mode_check') THEN
+        ALTER TABLE writing_sessions ADD CONSTRAINT writing_sessions_learning_mode_check CHECK (learning_mode IN ('standard', 'reinforcement'));
+      END IF;
+    END $$;
+    CREATE TABLE IF NOT EXISTS writing_session_focus_skills (session_id BIGINT NOT NULL REFERENCES writing_sessions(id) ON DELETE CASCADE, skill_code TEXT NOT NULL REFERENCES writing_skill_catalog(code) ON DELETE RESTRICT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY(session_id,skill_code));
+    CREATE INDEX IF NOT EXISTS writing_session_focus_skills_skill_idx ON writing_session_focus_skills(skill_code,session_id);
   `);
   for (const [code, name, scope] of skills)
     await pool.query(
@@ -1157,6 +1280,10 @@ export function registerWritingRoutes(
     const targetPublic = text(body.targetPublicLevel, 20) as PublicLevel;
     const targetGroup = text(body.targetLevelGroup, 40) || null;
     const force = bool(body.force);
+    const learningMode =
+      text(body.learningMode, 30) === 'reinforcement'
+        ? 'reinforcement'
+        : 'standard';
     if (!['learning', 'test', 'promotion_test'].includes(sessionType))
       return c.json({ error: '올바른 학습 요청이 아닙니다.' }, 400);
     const active = await getActiveSession(pool, user.id);
@@ -1166,6 +1293,7 @@ export function registerWritingRoutes(
       return c.json({ error: '먼저 시작 레벨을 설정해 주세요.' }, 409);
     if (
       sessionType === 'learning' &&
+      learningMode === 'standard' &&
       profile.current_public_level !== 'foundation' &&
       !['task1', 'task2'].includes(selectedTask)
     )
@@ -1194,9 +1322,22 @@ export function registerWritingRoutes(
         });
     }
     await requireConnected(codex, user.id);
+    const focusSkills =
+      sessionType === 'learning' && learningMode === 'reinforcement'
+        ? await queryFocusSkills(pool, user.id)
+        : [];
+    if (
+      sessionType === 'learning' &&
+      learningMode === 'reinforcement' &&
+      !focusSkills.length
+    )
+      return c.json(
+        { error: '보강할 학습 항목이 아직 충분히 쌓이지 않았습니다.' },
+        409,
+      );
     const isFoundation = profile.current_public_level === 'foundation';
     const plan: Array<{
-      task: TaskType;
+      task: TaskType | null;
       exercise: string;
       purpose: string;
       hint: boolean;
@@ -1258,19 +1399,29 @@ export function registerWritingRoutes(
                   hint: false,
                 },
               ]
-            : [
-                {
-                  task: selectedTask,
-                  exercise: selectedTask,
-                  purpose: 'main_learning',
-                  hint: true,
-                },
-              ];
+            : learningMode === 'reinforcement'
+              ? [
+                  {
+                    task: null,
+                    exercise: 'reinforcement',
+                    purpose: 'reinforcement_learning',
+                    hint: true,
+                  },
+                ]
+              : [
+                  {
+                    task: selectedTask,
+                    exercise: selectedTask,
+                    purpose: 'main_learning',
+                    hint: true,
+                  },
+                ];
     const session = await pool.query(
-      `INSERT INTO writing_sessions(user_id,session_type,status,public_level_snapshot,level_group_snapshot,internal_stage_snapshot,target_public_level,target_level_group,expected_item_count,rule_version) VALUES($1,$2,'generating',$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+      `INSERT INTO writing_sessions(user_id,session_type,learning_mode,status,public_level_snapshot,level_group_snapshot,internal_stage_snapshot,target_public_level,target_level_group,expected_item_count,rule_version) VALUES($1,$2,$3,'generating',$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
       [
         user.id,
         sessionType,
+        sessionType === 'learning' ? learningMode : 'standard',
         profile.current_public_level,
         profile.current_level_group,
         profile.current_internal_stage,
@@ -1282,6 +1433,12 @@ export function registerWritingRoutes(
     );
     const sessionId = Number(session.rows[0].id);
     try {
+      if (learningMode === 'reinforcement')
+        for (const skill of focusSkills)
+          await pool.query(
+            `INSERT INTO writing_session_focus_skills(session_id,skill_code) VALUES($1,$2) ON CONFLICT DO NOTHING`,
+            [sessionId, skill.code],
+          );
       const challengeRatio = Number(
         configForStage(String(profile.current_internal_stage)).challengeRatio ??
           0,
@@ -1291,14 +1448,36 @@ export function registerWritingRoutes(
           entry.task === 'foundation' || Math.random() * 100 >= challengeRatio
             ? 'standard'
             : 'challenge';
-        const question = await chooseQuestion(
-          pool,
-          codex,
-          user,
-          entry.task,
-          entry.exercise,
-          difficulty,
-        );
+        const question =
+          sessionType === 'learning' && learningMode === 'reinforcement'
+            ? await chooseReinforcementQuestion(
+                pool,
+                codex,
+                user,
+                focusSkills,
+                String(profile.current_internal_stage),
+              )
+            : sessionType === 'learning'
+              ? await chooseLearningQuestion(
+                  pool,
+                  codex,
+                  user,
+                  entry.task as TaskType,
+                  entry.exercise,
+                  difficulty,
+                  learningMode,
+                )
+              : await chooseQuestion(
+                  pool,
+                  codex,
+                  user,
+                  entry.task as TaskType,
+                  entry.exercise,
+                  difficulty,
+                  entry.purpose,
+                );
+        const questionTask = String(question.task_type) as TaskType;
+        const questionExercise = String(question.exercise_type);
         const hintSetId = entry.hint
           ? await ensureHintSet(
               pool,
@@ -1308,10 +1487,10 @@ export function registerWritingRoutes(
               String(profile.current_internal_stage),
             )
           : null;
-        const count = entry.task === 'foundation' ? 3 : null;
+        const count = questionTask === 'foundation' ? 3 : null;
         const targetWords = targetWordCountFor(
           String(profile.current_internal_stage),
-          entry.task,
+          questionTask,
         );
         await pool.query(
           `INSERT INTO writing_session_items(session_id,question_id,item_order,task_type,exercise_type,item_purpose,hint_set_id,target_sentence_count,target_word_count,status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'in_progress')`,
@@ -1319,8 +1498,8 @@ export function registerWritingRoutes(
             sessionId,
             question.id,
             index + 1,
-            entry.task === 'foundation' ? null : entry.task,
-            entry.exercise,
+            questionTask === 'foundation' ? null : questionTask,
+            questionExercise,
             entry.purpose,
             hintSetId,
             count,

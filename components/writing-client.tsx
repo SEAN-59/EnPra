@@ -40,6 +40,7 @@ type Overview = {
     name: string;
     score: number;
     evidenceCount: number;
+    reinforcementCount: number;
   }>;
 };
 
@@ -309,6 +310,26 @@ export function WritingBoardClient() {
       setBusy(false);
     }
   };
+  const startReinforcement = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      const result = await api<{ sessionId?: number }>({
+        action: 'start-session',
+        sessionType: 'learning',
+        learningMode: 'reinforcement',
+      });
+      if (result.sessionId) router.push(`/writing/session/${result.sessionId}`);
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : '보강 학습을 시작하지 못했습니다.',
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
   if (!overview)
     return (
       <section className="mt-7 grid min-h-56 place-items-center rounded-3xl border border-dashed border-[#d7cfc2]">
@@ -383,6 +404,7 @@ export function WritingBoardClient() {
     );
   return (
     <section className="mt-7 space-y-5">
+      <AiProgressOverlay active={busy} label="보강 문제를 준비하고 있어요." />
       <section className="rounded-3xl border border-[#dcd6ca] bg-[#fffdf8] p-6 shadow-[0_18px_48px_rgba(35,44,43,0.05)] sm:p-8">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -410,16 +432,21 @@ export function WritingBoardClient() {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-xs font-bold tracking-[0.12em] text-[#d76a47]">
-              LEARNING DIAGNOSIS
+              REINFORCEMENT
             </p>
             <h3 className="mt-2 font-serif text-2xl text-[#24333a]">
-              우선 보강할 항목
+              맞춤 보강 학습
             </h3>
           </div>
           {overview.topSkills.length > 0 && (
-            <span className="rounded-full bg-[#fff0e9] px-3 py-1.5 text-xs font-bold text-[#b85437]">
-              최근 14일 기준
-            </span>
+            <button
+              type="button"
+              disabled={Boolean(overview.activeSession) || busy}
+              onClick={startReinforcement}
+              className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#1d2935] px-4 text-sm font-bold text-[#fffdf8] transition-transform active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              보강 학습 <ArrowRight className="size-4" />
+            </button>
           )}
         </div>
         {overview.topSkills.length ? (
@@ -437,15 +464,17 @@ export function WritingBoardClient() {
                     {skill.name}
                   </p>
                 </div>
-                <p className="shrink-0 text-sm text-[#69736e]">
-                  {Math.round(skill.score)}점 · {skill.evidenceCount}문제
-                </p>
+                {skill.reinforcementCount > 0 && (
+                  <p className="shrink-0 text-sm text-[#69736e]">
+                    보완 필요 {skill.reinforcementCount}회
+                  </p>
+                )}
               </div>
             ))}
           </div>
         ) : (
           <p className="mt-4 text-sm leading-6 text-[#69736e]">
-            첫 학습 결과가 쌓이면 현재 우선 보강할 항목을 보여드립니다.
+            첫 학습 결과가 쌓이면 현재 상황에 맞는 보강 학습을 안내합니다.
           </p>
         )}
       </section>
