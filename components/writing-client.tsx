@@ -443,7 +443,7 @@ export function WritingBoardClient() {
               type="button"
               disabled={Boolean(overview.activeSession) || busy}
               onClick={startReinforcement}
-              className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#1d2935] px-4 text-sm font-bold text-[#fffdf8] transition-transform active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-45"
+              className="inline-flex h-11 items-center gap-2 rounded-xl bg-[#1d2935] px-5 text-sm font-bold text-[#fffdf8] transition-transform active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-45"
             >
               보강 학습 <ArrowRight className="size-4" />
             </button>
