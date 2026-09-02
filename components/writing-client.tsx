@@ -259,7 +259,7 @@ function HintMenu({
               {structureGuide.used ? (
                 <Check className="size-4 shrink-0 text-[#38634f]" />
               ) : (
-                <span className="text-xs font-semibold text-[#8a756b]">-10점</span>
+                <CircleHelp className="size-4 shrink-0 text-[#8a756b]" />
               )}
             </button>
           )}
@@ -1139,7 +1139,7 @@ export function WritingSessionClient({ sessionId }: { sessionId: number }) {
           {structureGuideUsed ? (
             <div className="mt-3 space-y-4">
               <div className="rounded-xl border border-[#f0cbbb] bg-[#fff8f4] px-4 py-3 text-sm leading-6 text-[#8a4a37]">
-                문단 구조 가이드를 사용 중입니다. 문단별 역할을 확인하며 작성해 보세요. 최종 내부 점수에서 10점이 차감됩니다.
+                문단 구조 가이드를 사용 중입니다. 문단별 역할을 확인하며 작성해 보세요.
               </div>
               {answerSections.map((section, index) => (
                 <label key={section.label} className="block">
