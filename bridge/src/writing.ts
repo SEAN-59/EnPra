@@ -237,7 +237,7 @@ async function sessionPayload(pool: Pool, userId: string, sessionId: number) {
     const hintRows = await pool.query(`SELECT h.id, h.hint_type, h.hint_order, h.content FROM writing_question_hints h WHERE h.hint_set_id = $1 ORDER BY h.hint_order`, [current.hint_set_id]);
     const used = await pool.query(`SELECT hint_id FROM writing_hint_usage_events WHERE session_item_id = $1`, [current.id]);
     const usedIds = new Set(used.rows.map((entry) => Number(entry.hint_id)));
-    hints = hintRows.rows.map((hint) => ({ id: Number(hint.id), type: hint.hint_type, order: Number(hint.hint_order), content: usedIds.has(Number(hint.id)) ? hint.content : null, revealed: usedIds.has(Number(hint.id)) }));
+    hints = hintRows.rows.map((hint) => ({ id: Number(hint.id), type: hint.hint_type, order: Number(hint.hint_order), content: hint.content, revealed: usedIds.has(Number(hint.id)) }));
   }
   return { id: Number(row.id), type: row.session_type, status: row.status, publicLevel: row.public_level_snapshot, levelGroup: row.level_group_snapshot, internalStage: row.internal_stage_snapshot, targetPublicLevel: row.target_public_level, targetLevelGroup: row.target_level_group, expectedItemCount: Number(row.expected_item_count), currentItem, completedItemCount: items.rows.filter((item) => item.status === 'evaluated').length, hints, completed: current === null, promotionRecommendation: row.promotion_recommendation, promotionScore: row.promotion_score ? Number(row.promotion_score) : null };
 }
