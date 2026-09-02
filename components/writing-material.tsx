@@ -221,20 +221,41 @@ function MapFeature({
   const points = pointList(feature.points);
   const pointString = points.map((point) => `${point.x},${point.y}`).join(' ');
   const isBridge = type === 'bridge' || /\bbridge\b/i.test(name);
-  if (type === 'road' || type === 'river' || type === 'path')
+  if (type === 'road' || type === 'river' || type === 'path') {
+    const start = points[0] ?? { x, y };
+    const end = points[points.length - 1] ?? { x: x + width, y: y + height };
+    const roadName = type === 'road' ? name || 'Road' : '';
     return (
-      <polyline
-        points={pointString || `${x},${y} ${x + width},${y + height}`}
-        fill="none"
-        stroke={
-          type === 'river' ? '#3c8daa' : type === 'path' ? color : '#62736f'
-        }
-        strokeWidth={type === 'road' ? 2.35 : 2.6}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeDasharray={type === 'path' ? '3 2' : undefined}
-      />
+      <g>
+        <polyline
+          points={pointString || `${x},${y} ${x + width},${y + height}`}
+          fill="none"
+          stroke={
+            type === 'river' ? '#3c8daa' : type === 'path' ? color : '#62736f'
+          }
+          strokeWidth={type === 'road' ? 2.35 : 2.6}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeDasharray={type === 'path' ? '3 2' : undefined}
+        />
+        {roadName && (
+          <text
+            x={(start.x + end.x) / 2}
+            y={(start.y + end.y) / 2 - 2.5}
+            textAnchor="middle"
+            fontSize="3.6"
+            fontWeight="700"
+            fill="#43504d"
+            stroke="#eaf0eb"
+            strokeWidth="1.5"
+            paintOrder="stroke"
+          >
+            {roadName}
+          </text>
+        )}
+      </g>
     );
+  }
   if (isBridge) {
     const start = points[0] ?? { x, y: y + height / 2 };
     const end = points[points.length - 1] ?? {
@@ -244,7 +265,7 @@ function MapFeature({
     const distance = Math.hypot(end.x - start.x, end.y - start.y) || 1;
     const offsetX = (-(end.y - start.y) / distance) * 1.3;
     const offsetY = ((end.x - start.x) / distance) * 1.3;
-    const displayName = name.toLowerCase() === 'bridge' ? '' : name;
+    const displayName = name || 'Bridge';
     return (
       <g>
         <line
