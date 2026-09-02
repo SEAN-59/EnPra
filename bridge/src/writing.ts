@@ -766,7 +766,7 @@ async function refreshSkillStates(pool: Pool, userId: string) {
         ],
       );
     const top = await client.query(
-      `SELECT c.name_ko FROM user_writing_skill_states st JOIN writing_skill_catalog c ON c.code = st.skill_code WHERE st.user_id = $1 ORDER BY st.priority DESC, st.recent_effective_score_avg ASC LIMIT 3`,
+      `SELECT c.name_ko FROM user_writing_skill_states st JOIN writing_skill_catalog c ON c.code = st.skill_code WHERE st.user_id = $1 ORDER BY st.priority DESC, st.recent_effective_score_avg ASC LIMIT 5`,
       [userId],
     );
     const summary = top.rows.length
@@ -836,7 +836,7 @@ async function publicOverview(pool: Pool, userId: string) {
     await refreshSkillStates(pool, userId);
   const current = (await queryProfile(pool, userId)) ?? profile;
   const states = await pool.query(
-    `SELECT c.code, c.name_ko, st.recent_effective_score_avg, st.recent_evidence_count, st.priority FROM user_writing_skill_states st JOIN writing_skill_catalog c ON c.code = st.skill_code WHERE st.user_id = $1 ORDER BY st.priority DESC, st.recent_effective_score_avg ASC LIMIT 3`,
+    `SELECT c.code, c.name_ko, st.recent_effective_score_avg, st.recent_evidence_count, st.priority FROM user_writing_skill_states st JOIN writing_skill_catalog c ON c.code = st.skill_code WHERE st.user_id = $1 ORDER BY st.priority DESC, st.recent_effective_score_avg ASC LIMIT 5`,
     [userId],
   );
   return {
