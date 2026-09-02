@@ -16,6 +16,7 @@ type FocusSkill = {
 };
 
 const WRITING_RULE_VERSION = 'v3';
+const FEEDBACK_REVIEW_VERSION = 'v1';
 
 const levelOrder: PublicLevel[] = [
   'foundation',
@@ -492,6 +493,74 @@ async function requireConnected(codex: CodexRegistry, userId: string) {
   if (account?.type !== 'chatgpt')
     throw new Error('먼저 ChatGPT OAuth 연결을 완료해 주세요.');
   return account;
+}
+
+function normalizeReviewedFeedback(value: Record<string, unknown>) {
+  const errors = asArray(value.errors)
+    .flatMap((item) => {
+      if (!item || typeof item !== 'object') return [];
+      const row = item as Record<string, unknown>;
+      const original = text(row.original, 1200);
+      const correction = text(row.correction, 1200);
+      const reason = text(row.reason, 1200);
+      return original || correction || reason ? [{ original, correction, reason }] : [];
+    })
+    .slice(0, 8);
+  const synonymGroups = asArray(value.synonymGroups)
+    .flatMap((item) => {
+      if (!item || typeof item !== 'object') return [];
+      const row = item as Record<string, unknown>;
+      const term = text(row.term, 200);
+      const alternatives = asArray(row.alternatives)
+        .map((alternative) => text(alternative, 200))
+        .filter(Boolean)
+        .slice(0, 4);
+      const note = text(row.note, 500);
+      return term || alternatives.length || note ? [{ term, alternatives, note }] : [];
+    })
+    .slice(0, 4);
+  const usefulExpressions = asArray(value.usefulExpressions)
+    .flatMap((item) => {
+      if (!item || typeof item !== 'object') return [];
+      const row = item as Record<string, unknown>;
+      const expression = text(row.expression, 400);
+      const meaning = text(row.meaning, 400);
+      const example = text(row.example, 1000);
+      return expression || meaning || example ? [{ expression, meaning, example }] : [];
+    })
+    .slice(0, 4);
+  const improvedAnswer = asArray(value.improvedAnswer)
+    .flatMap((item) => {
+      if (!item || typeof item !== 'object') return [];
+      const row = item as Record<string, unknown>;
+      const label = text(row.label, 80);
+      const content = text(row.text, 8000);
+      return content ? [{ label, text: content }] : [];
+    })
+    .slice(0, 5);
+  return {
+    correctedAnswer: text(value.correctedAnswer, 12000),
+    errors,
+    synonymGroups,
+    usefulExpressions,
+    improvedAnswer,
+    keyLearningPoints: asArray(value.keyLearningPoints)
+      .map((item) => text(item, 700))
+      .filter(Boolean)
+      .slice(0, 3),
+    nextFocus: text(value.nextFocus, 1000),
+  };
+}
+
+async function reviewNotebookFeedback(
+  codex: CodexRegistry,
+  userId: string,
+  row: Record<string, unknown>,
+) {
+  const prompt = `EnPra Writing 오답노트 검수 편집자입니다. 채점 결과를 다시 채점하거나 점수·PASS 여부·오류 사실을 변경하지 말고, 아래 원문 채점 데이터를 학습자가 읽기 좋은 한국어 피드백으로 재구성하세요. 원본에 없는 오류·표현·사실을 새로 만들지 마세요. 영어 예문은 원본 개선 답안 또는 교정 정보에 근거할 때만 쓰세요. 불필요한 장문은 줄이고, 설명은 친절하고 구체적으로 작성하세요. JSON만 반환하세요.\n\n문제 제목: ${text(row.title, 500)}\n문제: ${text(row.prompt, 8000)}\n자료: ${JSON.stringify(row.material_json ?? {})}\n사용자 답안: ${text(row.answer_text, 16000)}\n원본 채점 피드백: ${JSON.stringify(row.feedback_json ?? {})}\n\n반드시 다음 형식으로 반환하세요. correctedAnswer는 최소 교정 답안이며 줄바꿈을 유지합니다. errors는 실제 오류만 최대 8개입니다. synonymGroups는 관련 표현만 최대 4개입니다. usefulExpressions는 실제 재사용하기 좋은 표현만 최대 4개입니다. improvedAnswer는 문단별로 나누며 각 label은 Overview, Body 1, Body 2, Introduction, Conclusion 등 역할을 짧게 씁니다. keyLearningPoints는 최대 3개입니다.\n{"correctedAnswer":"","errors":[{"original":"","correction":"","reason":""}],"synonymGroups":[{"term":"","alternatives":[""],"note":""}],"usefulExpressions":[{"expression":"","meaning":"","example":""}],"improvedAnswer":[{"label":"","text":""}],"keyLearningPoints":[""],"nextFocus":""}`;
+  return normalizeReviewedFeedback(
+    jsonObject((await codex.get(userId).runLearningPrompt(prompt)).text),
+  );
 }
 
 async function queryProfile(pool: Pool, userId: string) {
@@ -1122,9 +1191,17 @@ export async function initializeWritingDatabase(pool: Pool) {
   await pool.query(`
     ALTER TABLE writing_sessions ADD COLUMN IF NOT EXISTS learning_mode TEXT NOT NULL DEFAULT 'standard';
     ALTER TABLE user_writing_skill_states ADD COLUMN IF NOT EXISTS recent_reinforcement_count INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE writing_attempt_results ADD COLUMN IF NOT EXISTS feedback_review_status TEXT NOT NULL DEFAULT 'not_requested';
+    ALTER TABLE writing_attempt_results ADD COLUMN IF NOT EXISTS reviewed_feedback_json JSONB NOT NULL DEFAULT '{}'::jsonb;
+    ALTER TABLE writing_attempt_results ADD COLUMN IF NOT EXISTS feedback_reviewed_at TIMESTAMPTZ;
+    ALTER TABLE writing_attempt_results ADD COLUMN IF NOT EXISTS feedback_review_model TEXT;
+    ALTER TABLE writing_attempt_results ADD COLUMN IF NOT EXISTS feedback_review_version TEXT;
     DO $$ BEGIN
       IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'writing_sessions_learning_mode_check') THEN
         ALTER TABLE writing_sessions ADD CONSTRAINT writing_sessions_learning_mode_check CHECK (learning_mode IN ('standard', 'reinforcement'));
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'writing_attempt_results_feedback_review_status_check') THEN
+        ALTER TABLE writing_attempt_results ADD CONSTRAINT writing_attempt_results_feedback_review_status_check CHECK (feedback_review_status IN ('not_requested','reviewing','completed','failed'));
       END IF;
     END $$;
     CREATE TABLE IF NOT EXISTS writing_session_focus_skills (session_id BIGINT NOT NULL REFERENCES writing_sessions(id) ON DELETE CASCADE, skill_code TEXT NOT NULL REFERENCES writing_skill_catalog(code) ON DELETE RESTRICT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY(session_id,skill_code));
@@ -1171,7 +1248,7 @@ export function registerWritingRoutes(
 
   app.get('/api/writing/notebook', async (c) => {
     const rows = await pool.query(
-      `SELECT r.id, r.answer_text, r.effective_score, r.result_label, r.error_count, r.feedback_json, r.evaluated_at, q.title, q.prompt, q.material_json, q.question_format, i.task_type FROM writing_attempt_results r JOIN writing_session_items i ON i.id=r.session_item_id JOIN writing_sessions s ON s.id=i.session_id JOIN writing_questions q ON q.id=i.question_id WHERE s.user_id=$1 AND r.affects_progress=TRUE AND r.evaluation_status='completed' AND r.error_count > 0 ORDER BY r.evaluated_at DESC LIMIT 100`,
+      `SELECT r.id, r.answer_text, r.effective_score, r.result_label, r.error_count, r.feedback_json, r.feedback_review_status, r.reviewed_feedback_json, r.feedback_reviewed_at, r.evaluated_at, q.title, q.prompt, q.material_json, q.question_format, i.task_type FROM writing_attempt_results r JOIN writing_session_items i ON i.id=r.session_item_id JOIN writing_sessions s ON s.id=i.session_id JOIN writing_questions q ON q.id=i.question_id WHERE s.user_id=$1 AND r.affects_progress=TRUE AND r.evaluation_status='completed' AND r.error_count > 0 ORDER BY r.evaluated_at DESC LIMIT 100`,
       [c.get('user').id],
     );
     return c.json({
@@ -1186,10 +1263,52 @@ export function registerWritingRoutes(
         score: Number(row.effective_score),
         label: row.result_label,
         errorCount: Number(row.error_count),
-        feedback: row.feedback_json,
+        feedback:
+          row.feedback_review_status === 'completed'
+            ? row.reviewed_feedback_json
+            : row.feedback_json,
+        reviewed: row.feedback_review_status === 'completed',
+        reviewStatus: row.feedback_review_status,
+        reviewedAt: row.feedback_reviewed_at,
         evaluatedAt: row.evaluated_at,
       })),
     });
+  });
+
+  app.post('/api/writing/notebook/review', async (c) => {
+    const user = c.get('user');
+    await requireConnected(codex, user.id);
+    const pending = await pool.query(
+      `SELECT r.id, r.answer_text, r.feedback_json, q.title, q.prompt, q.material_json FROM writing_attempt_results r JOIN writing_session_items i ON i.id=r.session_item_id JOIN writing_sessions s ON s.id=i.session_id JOIN writing_questions q ON q.id=i.question_id WHERE s.user_id=$1 AND r.affects_progress=TRUE AND r.evaluation_status='completed' AND r.error_count > 0 AND r.feedback_review_status IN ('not_requested','failed') ORDER BY r.evaluated_at DESC LIMIT 10`,
+      [user.id],
+    );
+    let reviewedCount = 0;
+    let failedCount = 0;
+    for (const row of pending.rows as Array<Record<string, unknown>>) {
+      try {
+        await pool.query(
+          `UPDATE writing_attempt_results SET feedback_review_status='reviewing',updated_at=NOW() WHERE id=$1`,
+          [row.id],
+        );
+        const reviewed = await reviewNotebookFeedback(codex, user.id, row);
+        await pool.query(
+          `UPDATE writing_attempt_results SET feedback_review_status='completed',reviewed_feedback_json=$2,feedback_reviewed_at=NOW(),feedback_review_model='gpt-5.6-luna',feedback_review_version=$3,updated_at=NOW() WHERE id=$1`,
+          [row.id, JSON.stringify(reviewed), FEEDBACK_REVIEW_VERSION],
+        );
+        reviewedCount += 1;
+      } catch (error) {
+        console.error('Writing notebook feedback review failed', {
+          resultId: row.id,
+          message: error instanceof Error ? error.message : String(error),
+        });
+        await pool.query(
+          `UPDATE writing_attempt_results SET feedback_review_status='failed',updated_at=NOW() WHERE id=$1`,
+          [row.id],
+        );
+        failedCount += 1;
+      }
+    }
+    return c.json({ reviewedCount, failedCount });
   });
 
   app.get('/api/writing/sessions/:sessionId', async (c) => {

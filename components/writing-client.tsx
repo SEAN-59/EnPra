@@ -1077,6 +1077,8 @@ export function WritingSessionClient({ sessionId }: { sessionId: number }) {
 
 function Feedback({ data }: { data: any }) {
   if (!data || typeof data !== 'object') return null;
+  if (Array.isArray(data.keyLearningPoints))
+    return <ReviewedFeedback data={data} />;
   return (
     <div className="mt-6 space-y-5 text-sm leading-6">
       <Section title="최소 교정 답안" value={data.correctedAnswer} />
@@ -1105,6 +1107,127 @@ function Feedback({ data }: { data: any }) {
     </div>
   );
 }
+
+function ReviewedFeedback({ data }: { data: any }) {
+  const errors = Array.isArray(data.errors) ? data.errors : [];
+  const synonymGroups = Array.isArray(data.synonymGroups)
+    ? data.synonymGroups
+    : [];
+  const usefulExpressions = Array.isArray(data.usefulExpressions)
+    ? data.usefulExpressions
+    : [];
+  const improvedAnswer = Array.isArray(data.improvedAnswer)
+    ? data.improvedAnswer
+    : [];
+  const keyLearningPoints = Array.isArray(data.keyLearningPoints)
+    ? data.keyLearningPoints
+    : [];
+  return (
+    <div className="mt-6 space-y-7 text-sm leading-6">
+      <div className="flex items-center gap-2 text-[11px] font-bold tracking-[.14em] text-[#38634f]">
+        <Sparkles className="size-3.5" />
+        AI REVIEWED FEEDBACK
+      </div>
+      <Section title="최소 교정 답안" value={data.correctedAnswer} />
+      {errors.length > 0 && (
+        <section>
+          <h3 className="font-bold text-[#24333a]">오류 설명</h3>
+          <div className="mt-3 space-y-3">
+            {errors.map((item: any, index: number) => (
+              <article
+                key={`${item.original}-${index}`}
+                className="rounded-2xl border border-[#ece5da] bg-[#fbf9f4] p-4"
+              >
+                <p className="font-medium text-[#8a756b] line-through">
+                  {item.original}
+                </p>
+                <p className="mt-1 font-bold text-[#c95738]">
+                  {item.correction}
+                </p>
+                <p className="mt-2 text-[#69736e]">{item.reason}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+      {synonymGroups.length > 0 && (
+        <section>
+          <h3 className="font-bold text-[#24333a]">유의어 · 대체 표현</h3>
+          <div className="mt-3 space-y-3">
+            {synonymGroups.map((group: any, index: number) => (
+              <article
+                key={`${group.term}-${index}`}
+                className="rounded-2xl border border-[#ece5da] p-4"
+              >
+                <p className="font-bold text-[#24333a]">{group.term}</p>
+                <p className="mt-1 text-[#c95738]">
+                  {(group.alternatives ?? []).join(' · ')}
+                </p>
+                {group.note && (
+                  <p className="mt-2 text-[#69736e]">{group.note}</p>
+                )}
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+      {usefulExpressions.length > 0 && (
+        <section>
+          <h3 className="font-bold text-[#24333a]">IELTS에 유용한 표현</h3>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            {usefulExpressions.map((item: any, index: number) => (
+              <article
+                key={`${item.expression}-${index}`}
+                className="rounded-2xl border border-[#ece5da] bg-[#fffdf8] p-4"
+              >
+                <p className="font-bold text-[#24333a]">{item.expression}</p>
+                <p className="mt-1 text-[#c95738]">{item.meaning}</p>
+                {item.example && (
+                  <p className="mt-3 border-t border-[#eee8dd] pt-3 text-[#69736e]">
+                    {item.example}
+                  </p>
+                )}
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+      {improvedAnswer.length > 0 && (
+        <section>
+          <h3 className="font-bold text-[#24333a]">개선 답안</h3>
+          <div className="mt-3 space-y-3 rounded-2xl border border-[#dce8e0] bg-[#f7fbf8] p-4 sm:p-5">
+            {improvedAnswer.map((paragraph: any, index: number) => (
+              <div key={`${paragraph.label}-${index}`}>
+                {paragraph.label && (
+                  <p className="text-xs font-bold tracking-[.12em] text-[#38634f]">
+                    {paragraph.label}
+                  </p>
+                )}
+                <p className="mt-1 whitespace-pre-wrap text-[#344149]">
+                  {paragraph.text}
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+      {keyLearningPoints.length > 0 && (
+        <section>
+          <h3 className="font-bold text-[#24333a]">이번에 기억할 핵심</h3>
+          <ul className="mt-3 space-y-2">
+            {keyLearningPoints.map((point: string, index: number) => (
+              <li key={`${point}-${index}`} className="flex gap-2 text-[#69736e]">
+                <Check className="mt-1 size-4 shrink-0 text-[#38634f]" />
+                <span>{point}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      <Section title="다음 학습 목표" value={data.nextFocus} />
+    </div>
+  );
+}
 function Section({ title, value }: { title: string; value: any }) {
   const content = typeof value === 'string' ? value.trim() : '';
   return content ? (
@@ -1119,12 +1242,34 @@ export function WritingNotebookClient() {
   const [entries, setEntries] = useState<any[] | null>(null);
   const [opened, setOpened] = useState<number | null>(null);
   const [materialOpened, setMaterialOpened] = useState<number | null>(null);
+  const [reviewing, setReviewing] = useState(false);
+  const [reviewMessage, setReviewMessage] = useState('');
   const [error, setError] = useState('');
   useEffect(() => {
     api<{ entries: any[] }>(undefined, 'notebook')
       .then((notebook) => setEntries(notebook.entries))
       .catch((cause: Error) => setError(cause.message));
   }, []);
+  const reviewNotebook = async () => {
+    setReviewing(true);
+    setReviewMessage('');
+    try {
+      const result = await api<{ reviewedCount: number; failedCount: number }>({
+        action: 'review-notebook',
+      });
+      const notebook = await api<{ entries: any[] }>(undefined, 'notebook');
+      setEntries(notebook.entries);
+      setReviewMessage(
+        result.reviewedCount
+          ? `${result.reviewedCount}개의 오답노트를 읽기 좋게 정리했어요.`
+          : '검수할 새 오답노트가 없습니다.',
+      );
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '검수에 실패했습니다.');
+    } finally {
+      setReviewing(false);
+    }
+  };
   if (error)
     return (
       <section className="mt-7 rounded-3xl border border-[#efd2c7] bg-[#fff8f4] p-6 text-sm text-[#a64b32]">
@@ -1148,8 +1293,35 @@ export function WritingNotebookClient() {
         </p>
       </section>
     );
+  const pendingReviewCount = entries.filter((entry) => !entry.reviewed).length;
   return (
-    <section className="mt-7 space-y-3">
+    <>
+      <AiProgressOverlay
+        active={reviewing}
+        label="AI가 오답노트를 읽기 좋게 정리하고 있어요."
+      />
+      <section className="mt-7 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#dce8e0] bg-[#f7fbf8] px-4 py-3">
+        <div>
+          <p className="text-xs font-bold tracking-[.12em] text-[#38634f]">
+            AI NOTE REVIEW
+          </p>
+          <p className="mt-1 text-sm text-[#69736e]">
+            기존 점수와 채점 원본은 유지하고, 읽기 쉬운 피드백으로 정리합니다.
+          </p>
+        </div>
+        <Button
+          onClick={reviewNotebook}
+          disabled={reviewing || pendingReviewCount === 0}
+          className="h-10 px-4"
+        >
+          {reviewing ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+          {pendingReviewCount ? 'AI 검수로 다듬기' : '검수 완료'}
+        </Button>
+      </div>
+      {reviewMessage && (
+        <p className="px-1 text-sm font-medium text-[#38634f]">{reviewMessage}</p>
+      )}
       {entries.map((entry) => (
         <article
           key={entry.id}
@@ -1219,6 +1391,7 @@ export function WritingNotebookClient() {
           )}
         </article>
       ))}
-    </section>
+      </section>
+    </>
   );
 }
