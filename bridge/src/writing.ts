@@ -8,6 +8,9 @@ type Variables = { user: UserContext };
 type PublicLevel = 'foundation' | '5.0' | '5.5' | '6.0' | '6.5' | '7.0';
 type SessionType = 'learning' | 'test' | 'promotion_test' | 'placement_test';
 type TaskType = 'task1' | 'task2' | 'foundation';
+type IELTSWritingTask = 'task1' | 'task2';
+
+const WRITING_RULE_VERSION = 'v2';
 
 const levelOrder: PublicLevel[] = ['foundation', '5.0', '5.5', '6.0', '6.5', '7.0'];
 const task1Formats = [
@@ -32,21 +35,53 @@ const skills = [
   ['lexical_precision', '어휘 선택의 정확성', 'both'],
 ] as const;
 
+const assessmentExpectations: Record<string, { label: string; task1: string; task2: string }> = {
+  foundation: { label: 'FOUNDATION', task1: '자료에서 사실을 찾아 정확한 기초 문장 3개를 만든다. 완전한 IELTS 답안이나 Band 판정은 하지 않는다.', task2: '의견, 이유, 예시를 기초 문장으로 정확히 연결한다. 완전한 IELTS 답안이나 Band 판정은 하지 않는다.' },
+  '5.0A': { label: '5.0A', task1: '제시 템플릿을 활용해 수치·변화 표현을 정확히 쓴다. 단순 문장의 정확성이 우선이며 짧은 답안이 허용된다.', task2: '제시 템플릿으로 의견과 한 가지 이유를 연결한다. 기본 문장 구조와 핵심 동사 패턴의 정확성이 우선이다.' },
+  '5.0B': { label: '5.0B', task1: '기본 Overview 또는 비교 문장을 포함하고, 선택한 수치가 자료와 일치해야 한다. 단순 연결은 허용하되 반복 오류는 감점한다.', task2: '분명한 입장과 이유·간단한 설명을 갖춘다. 문단 구조를 시도하고 기본 연결어를 정확히 사용해야 한다.' },
+  '5.0C': { label: '5.0C', task1: '공식 Band 5 수준을 목표로 한다. 전체 추세를 언급하고 핵심 특징 2개 이상을 자료에 맞게 설명한다. 세부 나열만 하거나 Overview가 없으면 크게 감점한다. 기본 비교·증감 어휘와 단순·일부 복문을 의미가 전달되도록 쓴다.', task2: '공식 Band 5 수준을 목표로 한다. 질문의 모든 부분에 답하고 명확한 입장, 이유 2개, 최소 한 번의 설명 또는 예시를 갖춘다. 조직은 보이지만 다소 기계적인 연결과 제한된 어휘·복문 오류는 허용한다.' },
+  '5.0D': { label: '5.0D', task1: 'Band 5를 안정적으로 넘어서는 단계다. Overview와 핵심 비교를 분명히 하고, 자료 오류 없이 선택한 특징을 충분히 뒷받침한다. 반복적 문법 오류나 기계적 나열은 높은 점수를 제한한다.', task2: 'Band 5를 안정적으로 넘어서는 단계다. 입장과 각 근거를 설명·예시로 발전시키며 문단 흐름을 유지한다. 어휘 반복을 줄이고 간단한 복문을 통제해야 한다.' },
+  '5.5A': { label: '5.5A', task1: 'Band 5.5에 가까운 수행을 요구한다. 핵심 추세와 비교를 선별해 명확히 제시하고, 데이터 설명을 기계적으로 나열하지 않는다.', task2: 'Band 5.5에 가까운 수행을 요구한다. 모든 요구에 답하고 근거를 충분히 전개한다. 문단별 중심 생각과 연결이 분명해야 한다.' },
+  '5.5B': { label: '5.5B', task1: 'Band 6 진입 기준이다. 명확한 Overview, 적절한 범주화와 비교, 대체로 정확한 자료 전달이 필요하다. 어휘와 문장 구조에 어느 정도 유연성을 보여야 한다.', task2: 'Band 6 진입 기준이다. 분명한 입장과 관련성 있는 근거를 충분히 발전시키고, 일관된 문단 구조와 대체로 정확한 어휘·문법을 보여야 한다.' },
+  '6.0A': { label: '6.0A', task1: '공식 Band 6 수준을 목표로 한다. 핵심 특징을 적절히 선택하고 명확한 Overview와 비교를 제시한다. 정보 순서와 연결은 대체로 논리적이어야 하며, 어휘는 적절하고 문법 오류가 의미를 방해하면 안 된다.', task2: '공식 Band 6 수준을 목표로 한다. 질문 전부에 답하며 입장과 주된 생각을 충분히 발전시킨다. 논리적 문단 구성, 적절한 연결, 대체로 정확한 어휘·복문 사용이 필요하다.' },
+  '6.0B': { label: '6.0B', task1: 'Band 6을 안정적으로 수행한다. 여러 특징의 관계와 예외를 정확히 다루며, 비교와 범주화가 자연스럽다. 부정확한 데이터 해석·반복적 언어는 높은 점수를 제한한다.', task2: 'Band 6을 안정적으로 수행한다. 근거를 구체적으로 발전시키고 반대 관점 또는 한계를 필요할 때 적절히 처리한다. 어휘 선택과 복문 정확성에 더 높은 통제를 요구한다.' },
+  '6.5A': { label: '6.5A', task1: 'Band 7로 가는 준비 단계다. 가장 중요한 추세를 선별해 Overview에서 명확히 강조하고, 비교를 정확하고 효율적으로 전개한다. 제한된 오류만 허용한다.', task2: 'Band 7로 가는 준비 단계다. 입장을 일관되게 유지하고 근거를 충분히 확장한다. 문단 간 흐름, 정확한 어휘 선택, 다양한 문장 구조를 요구한다.' },
+  '6.5B': { label: '6.5B', task1: 'Band 7에 가까운 수행을 요구한다. Overview, 범주화, 핵심 차이를 모두 명확히 보여 주고 일부 누락만 허용한다. 유연한 연결과 비교적 정교한 데이터 언어가 필요하다.', task2: 'Band 7에 가까운 수행을 요구한다. 질문 요구를 모두 다루고, 논리를 충분히 발전시키며, 응집 장치를 과도하게 사용하지 않는다. 정확하고 유연한 어휘·문법을 요구한다.' },
+  '7.0A': { label: '7.0A', task1: '공식 Band 7 수준을 목표로 한다. 자료의 핵심 추세·차이·예외를 선별한 명확한 Overview와 정확한 범주화가 필수다. 세부는 비교를 뒷받침해야 하며, 누락은 최소여야 한다. 어휘는 유연하고 정확해야 하고, 다양한 문장 구조의 오류는 드물며 의미를 방해하면 안 된다.', task2: '공식 Band 7 수준을 목표로 한다. 모든 질문 요구에 직접 답하고 일관된 입장을 유지하며, 논거를 충분히 발전시킨다. 아이디어는 논리적으로 진행되고 문단·응집 장치는 유연하게 사용되어야 한다. 어휘는 비교적 정확하고 유연해야 하며, 다양한 복문 구조를 대체로 정확히 통제해야 한다.' },
+  '7.0B': { label: '7.0B', task1: 'Band 7을 안정적으로 넘는 수행을 요구한다. 핵심 특징의 선택과 설명이 매우 정확하고 효율적이며, 데이터 언어·응집·문법에서 체계적 오류가 없어야 한다.', task2: 'Band 7을 안정적으로 넘는 수행을 요구한다. 견해와 근거를 깊이 있고 균형 있게 발전시키며, 정밀한 어휘와 폭넓은 문장 구조를 자연스럽게 통제해야 한다.' },
+};
+
 const stageConfig: Array<[PublicLevel, string | null, string, Record<string, unknown>]> = [
-  ['foundation', null, 'foundation', { minEvidence: 6, scoreWindowDays: 14, promotionScore: 78, challengeRatio: 0, targetSentenceCount: 3 }],
-  ['5.0', '5.0_basic', '5.0A', { minEvidence: 6, scoreWindowDays: 14, promotionScore: 78, challengeRatio: 0, targetWordCount: 70 }],
-  ['5.0', '5.0_basic', '5.0B', { minEvidence: 6, scoreWindowDays: 14, promotionScore: 80, challengeRatio: 0, targetWordCount: 80 }],
-  ['5.0', null, '5.0C', { minEvidence: 6, scoreWindowDays: 14, promotionScore: 82, challengeRatio: 0, targetWordCount: 120 }],
-  ['5.0', null, '5.0D', { minEvidence: 6, scoreWindowDays: 14, promotionScore: 84, challengeRatio: 0, targetWordCount: 150 }],
-  ['5.5', null, '5.5A', { minEvidence: 6, scoreWindowDays: 14, promotionScore: 80, challengeRatio: 0, targetWordCount: 170 }],
-  ['5.5', null, '5.5B', { minEvidence: 6, scoreWindowDays: 14, promotionScore: 84, challengeRatio: 0, targetWordCount: 250 }],
-  ['6.0', null, '6.0A', { minEvidence: 6, scoreWindowDays: 14, promotionScore: 80, challengeRatio: 10, targetWordCount: 180 }],
-  ['6.0', null, '6.0B', { minEvidence: 6, scoreWindowDays: 14, promotionScore: 84, challengeRatio: 10, targetWordCount: 250 }],
-  ['6.5', null, '6.5A', { minEvidence: 6, scoreWindowDays: 14, promotionScore: 82, challengeRatio: 25, targetWordCount: 200 }],
-  ['6.5', null, '6.5B', { minEvidence: 6, scoreWindowDays: 14, promotionScore: 86, challengeRatio: 25, targetWordCount: 250 }],
-  ['7.0', null, '7.0A', { minEvidence: 6, scoreWindowDays: 14, promotionScore: 84, challengeRatio: 30, targetWordCount: 220 }],
-  ['7.0', null, '7.0B', { minEvidence: 6, scoreWindowDays: 14, promotionScore: 88, challengeRatio: 30, targetWordCount: 250 }],
+  ['foundation', null, 'foundation', { minEvidence: 6, scoreWindowDays: 14, promotionScore: 78, challengeRatio: 0, targetSentenceCount: 3, expectation: assessmentExpectations.foundation }],
+  ['5.0', '5.0_basic', '5.0A', { minEvidence: 6, scoreWindowDays: 14, promotionScore: 78, challengeRatio: 0, targetWordCounts: { task1: 70, task2: 100 }, expectation: assessmentExpectations['5.0A'] }],
+  ['5.0', '5.0_basic', '5.0B', { minEvidence: 6, scoreWindowDays: 14, promotionScore: 80, challengeRatio: 0, targetWordCounts: { task1: 100, task2: 170 }, expectation: assessmentExpectations['5.0B'] }],
+  ['5.0', null, '5.0C', { minEvidence: 6, scoreWindowDays: 14, promotionScore: 82, challengeRatio: 0, targetWordCounts: { task1: 150, task2: 250 }, expectation: assessmentExpectations['5.0C'] }],
+  ['5.0', null, '5.0D', { minEvidence: 6, scoreWindowDays: 14, promotionScore: 84, challengeRatio: 0, targetWordCounts: { task1: 150, task2: 250 }, expectation: assessmentExpectations['5.0D'] }],
+  ['5.5', null, '5.5A', { minEvidence: 6, scoreWindowDays: 14, promotionScore: 80, challengeRatio: 0, targetWordCounts: { task1: 150, task2: 250 }, expectation: assessmentExpectations['5.5A'] }],
+  ['5.5', null, '5.5B', { minEvidence: 6, scoreWindowDays: 14, promotionScore: 84, challengeRatio: 0, targetWordCounts: { task1: 150, task2: 250 }, expectation: assessmentExpectations['5.5B'] }],
+  ['6.0', null, '6.0A', { minEvidence: 6, scoreWindowDays: 14, promotionScore: 80, challengeRatio: 10, targetWordCounts: { task1: 150, task2: 250 }, expectation: assessmentExpectations['6.0A'] }],
+  ['6.0', null, '6.0B', { minEvidence: 6, scoreWindowDays: 14, promotionScore: 84, challengeRatio: 10, targetWordCounts: { task1: 150, task2: 250 }, expectation: assessmentExpectations['6.0B'] }],
+  ['6.5', null, '6.5A', { minEvidence: 6, scoreWindowDays: 14, promotionScore: 82, challengeRatio: 25, targetWordCounts: { task1: 150, task2: 250 }, expectation: assessmentExpectations['6.5A'] }],
+  ['6.5', null, '6.5B', { minEvidence: 6, scoreWindowDays: 14, promotionScore: 86, challengeRatio: 25, targetWordCounts: { task1: 150, task2: 250 }, expectation: assessmentExpectations['6.5B'] }],
+  ['7.0', null, '7.0A', { minEvidence: 6, scoreWindowDays: 14, promotionScore: 84, challengeRatio: 30, targetWordCounts: { task1: 150, task2: 250 }, expectation: assessmentExpectations['7.0A'] }],
+  ['7.0', null, '7.0B', { minEvidence: 6, scoreWindowDays: 14, promotionScore: 88, challengeRatio: 30, targetWordCounts: { task1: 150, task2: 250 }, expectation: assessmentExpectations['7.0B'] }],
 ];
+
+function configForStage(stage: string) {
+  return stageConfig.find((row) => row[2] === stage)?.[3] ?? {};
+}
+
+function targetWordCountFor(stage: string, task: TaskType) {
+  if (task === 'foundation') return null;
+  const counts = configForStage(stage).targetWordCounts as Partial<Record<IELTSWritingTask, unknown>> | undefined;
+  return Math.max(0, number(counts?.[task], 0)) || null;
+}
+
+function expectationFor(stage: string, task: TaskType) {
+  const expectation = configForStage(stage).expectation as { label?: unknown; task1?: unknown; task2?: unknown } | undefined;
+  if (task === 'foundation') return text(expectation?.task1, 4000);
+  return text(expectation?.[task], 4000);
+}
 
 function pickWeighted<T extends ReadonlyArray<readonly [string, number]>>(items: T): T[number][0] {
   const pick = Math.random() * 100;
@@ -83,6 +118,18 @@ function number(value: unknown, fallback = 0) { const parsed = typeof value === 
 function asArray(value: unknown) { return Array.isArray(value) ? value : []; }
 function bool(value: unknown) { return value === true; }
 
+function criterionRows(evaluation: Record<string, unknown>, task: TaskType) {
+  const criteria = evaluation.criteria && typeof evaluation.criteria === 'object' ? evaluation.criteria as Record<string, unknown> : {};
+  const fallback = Math.max(0, Math.min(100, number(evaluation.rawScore, 50)));
+  const taskCriterion = task === 'task2' ? 'task_response' : 'task_achievement';
+  return [
+    { code: taskCriterion, score: Math.max(0, Math.min(100, number(criteria.taskAchievementOrResponse, fallback))), evidence: text(criteria.taskAchievementOrResponseEvidence, 1000) },
+    { code: 'coherence_cohesion', score: Math.max(0, Math.min(100, number(criteria.coherenceCohesion, fallback))), evidence: text(criteria.coherenceCohesionEvidence, 1000) },
+    { code: 'lexical_resource', score: Math.max(0, Math.min(100, number(criteria.lexicalResource, fallback))), evidence: text(criteria.lexicalResourceEvidence, 1000) },
+    { code: 'grammatical_range_accuracy', score: Math.max(0, Math.min(100, number(criteria.grammaticalRangeAccuracy, fallback))), evidence: text(criteria.grammaticalRangeAccuracyEvidence, 1000) },
+  ];
+}
+
 async function readBody(c: Context) {
   try { return await c.req.json<Record<string, unknown>>(); } catch { throw new Error('요청 형식이 올바르지 않습니다.'); }
 }
@@ -104,16 +151,16 @@ async function getActiveSession(pool: Pool, userId: string) {
 }
 
 async function ensureHintSet(pool: Pool, codex: CodexRegistry, user: UserContext, question: Record<string, unknown>, internalStage: string) {
-  const existing = await pool.query(`SELECT id FROM writing_question_hint_sets WHERE question_id = $1 AND internal_stage = $2 AND rule_version = 'v1' AND status = 'ready'`, [question.id, internalStage]);
+  const existing = await pool.query(`SELECT id FROM writing_question_hint_sets WHERE question_id = $1 AND internal_stage = $2 AND rule_version = $3 AND status = 'ready'`, [question.id, internalStage, WRITING_RULE_VERSION]);
   if (existing.rows[0]) return Number(existing.rows[0].id);
   const skillRows = await pool.query(`SELECT skill_code FROM writing_question_skills WHERE question_id = $1 ORDER BY importance DESC, weight DESC`, [question.id]);
   const skillCodes = skillRows.rows.map((row) => row.skill_code).join(', ');
-  const prompt = `EnPra Writing 학습 문제용 힌트를 만드세요. JSON만 반환하세요.\n현재 내부 단계: ${internalStage}\n문제: ${question.prompt}\n자료: ${JSON.stringify(question.material_json ?? {})}\n핵심 스킬: ${skillCodes}\n각 단계 수준에 맞추어 아래 4개 힌트를 한국어로 작성하세요. 예시 힌트는 답 전체를 보여주지 말고 시작 문장 또는 짧은 모델만 제시합니다.\n{\"hints\":[{\"type\":\"structure\",\"content\":\"\",\"skillCode\":\"\"},{\"type\":\"grammar\",\"content\":\"\",\"skillCode\":\"\"},{\"type\":\"vocabulary\",\"content\":\"\",\"skillCode\":\"\"},{\"type\":\"sample\",\"content\":\"\",\"skillCode\":\"\"}]}`;
+  const prompt = `EnPra Writing 학습 문제용 힌트를 만드세요. JSON만 반환하세요.\n현재 내부 단계: ${internalStage}\n이 단계의 기대치: ${expectationFor(internalStage, String(question.task_type) as TaskType)}\n문제: ${question.prompt}\n자료: ${JSON.stringify(question.material_json ?? {})}\n핵심 스킬: ${skillCodes}\n각 단계 수준에 맞추어 아래 4개 힌트를 한국어로 작성하세요. 예시 힌트는 답 전체를 보여주지 말고 시작 문장 또는 짧은 모델만 제시합니다.\n{\"hints\":[{\"type\":\"structure\",\"content\":\"\",\"skillCode\":\"\"},{\"type\":\"grammar\",\"content\":\"\",\"skillCode\":\"\"},{\"type\":\"vocabulary\",\"content\":\"\",\"skillCode\":\"\"},{\"type\":\"sample\",\"content\":\"\",\"skillCode\":\"\"}]}`;
   const generated = jsonObject((await codex.get(user.id).runLearningPrompt(prompt)).text);
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const inserted = await client.query(`INSERT INTO writing_question_hint_sets (question_id, internal_stage, rule_version, status) VALUES ($1, $2, 'v1', 'ready') ON CONFLICT (question_id, internal_stage, rule_version) DO UPDATE SET status = 'ready' RETURNING id`, [question.id, internalStage]);
+    const inserted = await client.query(`INSERT INTO writing_question_hint_sets (question_id, internal_stage, rule_version, status) VALUES ($1, $2, $3, 'ready') ON CONFLICT (question_id, internal_stage, rule_version) DO UPDATE SET status = 'ready' RETURNING id`, [question.id, internalStage, WRITING_RULE_VERSION]);
     const hintSetId = Number(inserted.rows[0].id);
     await client.query(`DELETE FROM writing_question_hints WHERE hint_set_id = $1`, [hintSetId]);
     const penalty: Record<string, number> = { structure: 5, grammar: 8, vocabulary: 6, sample: 15 };
@@ -185,10 +232,13 @@ async function refreshSkillStates(pool: Pool, userId: string) {
     await client.query(`UPDATE user_writing_profiles SET board_summary = $2, board_next_action = 'learning', metrics_refreshed_for_date = CURRENT_DATE, metrics_refreshed_at = NOW(), updated_at = NOW() WHERE user_id = $1`, [userId, summary]);
     const evidence = await client.query(`SELECT COUNT(*)::INTEGER AS count, AVG(r.effective_score) AS score FROM writing_attempt_results r JOIN writing_session_items i ON i.id=r.session_item_id JOIN writing_sessions s ON s.id=i.session_id WHERE s.user_id=$1 AND s.internal_stage_snapshot=$2 AND r.affects_progress=TRUE AND r.evaluated_at >= NOW() - INTERVAL '14 days'`, [userId, stage]);
     const count = Number(evidence.rows[0]?.count ?? 0); const score = Number(evidence.rows[0]?.score ?? 0);
+    const currentRule = configForStage(stage);
+    const minEvidence = Number(currentRule.minEvidence ?? 6);
+    const promotionScore = Number(currentRule.promotionScore ?? 84);
     const siblings = stageConfig.filter(([level]) => level === profile.current_public_level).map(([, , itemStage]) => itemStage);
     const currentIndex = siblings.indexOf(stage);
-    const nextStage = count >= 6 && score >= 84 ? siblings[currentIndex + 1] : undefined;
-    const previousStage = count >= 6 && score < 60 && currentIndex > 0 ? siblings[currentIndex - 1] : undefined;
+    const nextStage = count >= minEvidence && score >= promotionScore ? siblings[currentIndex + 1] : undefined;
+    const previousStage = count >= minEvidence && score < 60 && currentIndex > 0 ? siblings[currentIndex - 1] : undefined;
     const replacement = nextStage ?? previousStage;
     if (replacement) {
       await client.query(`UPDATE user_writing_profiles SET current_internal_stage=$2,current_level_group=$3,current_stage_started_at=NOW(),board_summary='새 내부 단계에 맞춰 학습 난이도를 조정했습니다.',metrics_refreshed_for_date=CURRENT_DATE,metrics_refreshed_at=NOW(),updated_at=NOW() WHERE user_id=$1`, [userId, replacement, groupFor(replacement)]);
@@ -256,6 +306,7 @@ export async function initializeWritingDatabase(pool: Pool) {
     CREATE UNIQUE INDEX IF NOT EXISTS writing_sessions_one_active_per_user_idx ON writing_sessions(user_id) WHERE status IN ('generating','in_progress');
     CREATE TABLE IF NOT EXISTS writing_session_items (id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, session_id BIGINT NOT NULL REFERENCES writing_sessions(id) ON DELETE CASCADE, question_id BIGINT NOT NULL REFERENCES writing_questions(id) ON DELETE RESTRICT, item_order SMALLINT NOT NULL, task_type TEXT, exercise_type TEXT NOT NULL, item_purpose TEXT NOT NULL, hint_set_id BIGINT REFERENCES writing_question_hint_sets(id) ON DELETE SET NULL, target_sentence_count SMALLINT, target_word_count SMALLINT, status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','in_progress','submitted','evaluated','abandoned')), assigned_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), completed_at TIMESTAMPTZ, UNIQUE(session_id,item_order));
     CREATE TABLE IF NOT EXISTS writing_attempt_results (id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, session_item_id BIGINT NOT NULL UNIQUE REFERENCES writing_session_items(id) ON DELETE CASCADE, answer_text TEXT NOT NULL, answer_word_count INTEGER NOT NULL, answer_character_count INTEGER NOT NULL, submitted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), evaluation_status TEXT NOT NULL CHECK (evaluation_status IN ('evaluating','completed','failed')), evaluated_at TIMESTAMPTZ, raw_score NUMERIC(5,2), hint_penalty_score NUMERIC(5,2) NOT NULL DEFAULT 0, effective_score NUMERIC(5,2), result_label TEXT, error_count SMALLINT NOT NULL DEFAULT 0, feedback_json JSONB NOT NULL DEFAULT '{}'::jsonb, affects_progress BOOLEAN NOT NULL DEFAULT TRUE, feedback_released_at TIMESTAMPTZ, rule_version TEXT NOT NULL DEFAULT 'v1', evaluation_model TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+    CREATE TABLE IF NOT EXISTS writing_attempt_criterion_results (id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, attempt_result_id BIGINT NOT NULL REFERENCES writing_attempt_results(id) ON DELETE CASCADE, criterion_code TEXT NOT NULL CHECK (criterion_code IN ('task_achievement','task_response','coherence_cohesion','lexical_resource','grammatical_range_accuracy')), raw_score NUMERIC(5,2) NOT NULL CHECK (raw_score BETWEEN 0 AND 100), descriptor_target TEXT NOT NULL, evidence_summary TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE(attempt_result_id,criterion_code));
     CREATE TABLE IF NOT EXISTS writing_attempt_skill_results (id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, attempt_result_id BIGINT NOT NULL REFERENCES writing_attempt_results(id) ON DELETE CASCADE, skill_code TEXT NOT NULL REFERENCES writing_skill_catalog(code) ON DELETE RESTRICT, quality_score NUMERIC(5,2) NOT NULL, hint_penalty_score NUMERIC(5,2) NOT NULL DEFAULT 0, effective_score NUMERIC(5,2) NOT NULL, weight_applied NUMERIC(4,3) NOT NULL, evidence_summary TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE(attempt_result_id,skill_code));
     CREATE TABLE IF NOT EXISTS writing_hint_usage_events (id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, session_item_id BIGINT NOT NULL REFERENCES writing_session_items(id) ON DELETE CASCADE, hint_id BIGINT NOT NULL REFERENCES writing_question_hints(id) ON DELETE CASCADE, revealed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE(session_item_id,hint_id));
     CREATE TABLE IF NOT EXISTS writing_level_change_history (id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, from_public_level TEXT, from_level_group TEXT, to_public_level TEXT NOT NULL, to_level_group TEXT, change_type TEXT NOT NULL CHECK (change_type IN ('initial_placement','promotion','manual_demotion')), source_session_id BIGINT REFERENCES writing_sessions(id) ON DELETE SET NULL, changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
@@ -265,7 +316,10 @@ export async function initializeWritingDatabase(pool: Pool) {
     CREATE INDEX IF NOT EXISTS writing_attempt_skill_results_skill_idx ON writing_attempt_skill_results(skill_code,effective_score);
   `);
   for (const [code, name, scope] of skills) await pool.query(`INSERT INTO writing_skill_catalog(code,name_ko,task_scope) VALUES($1,$2,$3) ON CONFLICT(code) DO UPDATE SET name_ko = EXCLUDED.name_ko, task_scope = EXCLUDED.task_scope, is_active = TRUE, updated_at = NOW()`, [code,name,scope]);
-  for (const [level, group, stage, config] of stageConfig) await pool.query(`INSERT INTO writing_level_rules(public_level,level_group,internal_stage,config) SELECT $1,$2,$3,$4 WHERE NOT EXISTS (SELECT 1 FROM writing_level_rules WHERE public_level=$1 AND level_group IS NOT DISTINCT FROM $2 AND internal_stage=$3 AND rule_version='v1')`, [level,group,stage,JSON.stringify(config)]);
+  for (const [level, group, stage, config] of stageConfig) {
+    await pool.query(`UPDATE writing_level_rules SET config=$5,is_active=TRUE,updated_at=NOW() WHERE public_level=$1 AND level_group IS NOT DISTINCT FROM $2 AND internal_stage=$3 AND rule_version=$4`, [level,group,stage,WRITING_RULE_VERSION,JSON.stringify(config)]);
+    await pool.query(`INSERT INTO writing_level_rules(public_level,level_group,internal_stage,rule_version,config) SELECT $1,$2,$3,$4,$5 WHERE NOT EXISTS (SELECT 1 FROM writing_level_rules WHERE public_level=$1 AND level_group IS NOT DISTINCT FROM $2 AND internal_stage=$3 AND rule_version=$4)`, [level,group,stage,WRITING_RULE_VERSION,JSON.stringify(config)]);
+  }
 }
 
 export function registerWritingRoutes(app: Hono<{ Variables: Variables }>, pool: Pool, codex: CodexRegistry) {
@@ -302,12 +356,13 @@ export function registerWritingRoutes(app: Hono<{ Variables: Variables }>, pool:
     }
     await requireConnected(codex, user.id);
     const taskTypes: TaskType[] = requested === '5.0' ? ['task1'] : ['task1','task2'];
-    const session = await pool.query(`INSERT INTO writing_sessions(user_id,session_type,status,target_public_level,expected_item_count) VALUES($1,'placement_test','generating',$2,$3) RETURNING id`, [user.id,requested,taskTypes.length]);
+    const placementStage = stageFor(requested);
+    const session = await pool.query(`INSERT INTO writing_sessions(user_id,session_type,status,public_level_snapshot,internal_stage_snapshot,target_public_level,expected_item_count,rule_version) VALUES($1,'placement_test','generating',$2,$3,$2,$4,$5) RETURNING id`, [user.id,requested,placementStage,taskTypes.length,WRITING_RULE_VERSION]);
     const sessionId = Number(session.rows[0].id);
     try {
       for (const [index, taskType] of taskTypes.entries()) {
         const question = await chooseQuestion(pool,codex,user,taskType,taskType,'standard','placement');
-        await pool.query(`INSERT INTO writing_session_items(session_id,question_id,item_order,task_type,exercise_type,item_purpose,status) VALUES($1,$2,$3,$4,$5,'placement_test','in_progress')`, [sessionId,question.id,index+1,taskType,taskType]);
+        await pool.query(`INSERT INTO writing_session_items(session_id,question_id,item_order,task_type,exercise_type,item_purpose,target_word_count,status) VALUES($1,$2,$3,$4,$5,'placement_test',$6,'in_progress')`, [sessionId,question.id,index+1,taskType,taskType,targetWordCountFor(placementStage, taskType)]);
       }
       await pool.query(`UPDATE writing_sessions SET status='in_progress',generated_at=NOW(),updated_at=NOW() WHERE id=$1`, [sessionId]);
       return c.json({ sessionId });
@@ -337,16 +392,16 @@ export function registerWritingRoutes(app: Hono<{ Variables: Variables }>, pool:
     await requireConnected(codex,user.id);
     const isFoundation = profile.current_public_level === 'foundation';
     const plan: Array<{ task: TaskType; exercise: string; purpose: string; hint: boolean }> = sessionType === 'promotion_test' ? [{task:'task1',exercise:'task1',purpose:'promotion_test',hint:false},{task:'task1',exercise:'task1',purpose:'promotion_test',hint:false},{task:'task2',exercise:'task2',purpose:'promotion_test',hint:false}] : isFoundation ? [{task:'foundation',exercise:'foundation_guided',purpose:'foundation_guided',hint:sessionType==='learning'},{task:'foundation',exercise:'foundation_guided',purpose:'foundation_guided',hint:sessionType==='learning'},{task:'foundation',exercise:'foundation_open',purpose:'foundation_open',hint:sessionType==='learning'}] : sessionType === 'test' ? [{task:'task1',exercise:'task1',purpose:'regular_test',hint:false},{task:'task2',exercise:'task2',purpose:'regular_test',hint:false}] : [{task:selectedTask,exercise:selectedTask,purpose:'main_learning',hint:true}];
-    const session = await pool.query(`INSERT INTO writing_sessions(user_id,session_type,status,public_level_snapshot,level_group_snapshot,internal_stage_snapshot,target_public_level,target_level_group,expected_item_count) VALUES($1,$2,'generating',$3,$4,$5,$6,$7,$8) RETURNING id`, [user.id,sessionType,profile.current_public_level,profile.current_level_group,profile.current_internal_stage,sessionType==='promotion_test'?targetPublic:null,sessionType==='promotion_test'?targetGroup:null,plan.length]);
+    const session = await pool.query(`INSERT INTO writing_sessions(user_id,session_type,status,public_level_snapshot,level_group_snapshot,internal_stage_snapshot,target_public_level,target_level_group,expected_item_count,rule_version) VALUES($1,$2,'generating',$3,$4,$5,$6,$7,$8,$9) RETURNING id`, [user.id,sessionType,profile.current_public_level,profile.current_level_group,profile.current_internal_stage,sessionType==='promotion_test'?targetPublic:null,sessionType==='promotion_test'?targetGroup:null,plan.length,WRITING_RULE_VERSION]);
     const sessionId = Number(session.rows[0].id);
     try {
-      const challengeRatio = Number(stageConfig.find((row) => row[2] === profile.current_internal_stage)?.[3].challengeRatio ?? 0);
+      const challengeRatio = Number(configForStage(String(profile.current_internal_stage)).challengeRatio ?? 0);
       for (const [index, entry] of plan.entries()) {
         const difficulty = entry.task === 'foundation' || Math.random() * 100 >= challengeRatio ? 'standard' : 'challenge';
         const question = await chooseQuestion(pool,codex,user,entry.task,entry.exercise,difficulty);
         const hintSetId = entry.hint ? await ensureHintSet(pool,codex,user,question,String(profile.current_internal_stage)) : null;
         const count = entry.task === 'foundation' ? 3 : null;
-        const targetWords = Number(stageConfig.find((row) => row[2] === profile.current_internal_stage)?.[3].targetWordCount ?? 0) || null;
+        const targetWords = targetWordCountFor(String(profile.current_internal_stage), entry.task);
         await pool.query(`INSERT INTO writing_session_items(session_id,question_id,item_order,task_type,exercise_type,item_purpose,hint_set_id,target_sentence_count,target_word_count,status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'in_progress')`, [sessionId,question.id,index+1,entry.task === 'foundation' ? null : entry.task,entry.exercise,entry.purpose,hintSetId,count,targetWords]);
       }
       await pool.query(`UPDATE writing_sessions SET status='in_progress',generated_at=NOW(),updated_at=NOW() WHERE id=$1`,[sessionId]);
@@ -372,9 +427,14 @@ export function registerWritingRoutes(app: Hono<{ Variables: Variables }>, pool:
     await requireConnected(codex,user.id);
     const usedHints = await pool.query(`SELECT h.skill_code,h.penalty_score,h.hint_type FROM writing_hint_usage_events e JOIN writing_question_hints h ON h.id=e.hint_id WHERE e.session_item_id=$1`,[itemId]);
     const skillRows = await pool.query(`SELECT qs.skill_code,qs.weight FROM writing_question_skills qs WHERE qs.question_id=$1 ORDER BY qs.importance DESC,qs.weight DESC`,[item.question_id]);
-    const prompt = `EnPra IELTS Writing 답안을 채점하세요. JSON만 반환하세요. Band 점수 대신 0~100 수행 점수를 사용합니다. 현재 내부 단계: ${item.internal_stage_snapshot}. 문제: ${item.prompt}. 자료: ${JSON.stringify(item.material_json)}. 내부 정답 정보: ${JSON.stringify(item.solution_context)}. 사용자 답안: ${answer}. 평가 스킬: ${skillRows.rows.map((row)=>row.skill_code).join(', ')}. 힌트 사용: ${JSON.stringify(usedHints.rows)}.\n반드시 {\"rawScore\":0,\"resultLabel\":\"pass|partial|needs_practice\",\"errorCount\":0,\"feedback\":{\"correctedAnswer\":\"\",\"errors\":[{\"original\":\"\",\"correction\":\"\",\"reason\":\"\"}],\"synonyms\":[\"\"],\"usefulExpressions\":[\"\"],\"improvedAnswer\":\"\",\"keyLearning\":\"\",\"nextFocus\":\"\"},\"skills\":[{\"code\":\"\",\"qualityScore\":0,\"evidenceSummary\":\"\"}]} 형식으로 반환하세요.`;
+    const task = item.task_type === 'task1' ? 'task1' : item.task_type === 'task2' ? 'task2' : 'foundation';
+    const targetWords = number(item.target_word_count, 0);
+    const taskCriterion = task === 'task2' ? 'Task Response' : 'Task Achievement';
+    const stageExpectation = expectationFor(String(item.internal_stage_snapshot), task);
+    const prompt = `EnPra IELTS Writing 답안을 채점하세요. JSON만 반환하세요. 이것은 공식 IELTS 점수표 자체가 아니라, 공식 IELTS Writing public band descriptors의 4개 축을 내부 학습 단계에 적용한 0~100 수행 점수입니다.\n현재 내부 단계: ${item.internal_stage_snapshot}\n이 단계의 기대치: ${stageExpectation}\n과제: ${task}; 핵심 과제 축: ${taskCriterion}; 목표 최소 분량: ${targetWords > 0 ? `${targetWords}단어` : '기초 3문장'}.\n문제: ${item.prompt}\n자료: ${JSON.stringify(item.material_json)}\n내부 정답 정보: ${JSON.stringify(item.solution_context)}\n사용자 답안: ${answer}\n평가 스킬: ${skillRows.rows.map((row)=>row.skill_code).join(', ')}\n\n채점 원칙:\n1. 같은 답안이라도 현재 내부 단계의 기대치로 평가한다. 5.0C에서는 Band 5 목표를 충족하면 높은 점수를 받을 수 있지만, 7.0A에서는 Band 7 목표를 충족해야 같은 높은 점수를 받을 수 있다.\n2. ${task === 'task1' ? '자료를 정확히 읽고 Overview·핵심 특징·비교를 평가한다.' : task === 'task2' ? '질문의 모든 부분, 명확한 입장, 근거의 발전을 평가한다.' : '기초 문장의 정확성·연결·과제 충족을 평가한다.'}\n3. 분량이 목표보다 짧으면 ${taskCriterion}에 반영한다. 다만 단어 수만으로 점수를 높게 주지 말고 내용의 질과 정확성을 우선한다.\n4. Coherence & Cohesion, Lexical Resource, Grammatical Range & Accuracy를 각각 독립적으로 평가한다. 힌트 감점은 서버가 별도로 처리하므로 여기서는 감점하지 않는다.\n5. rawScore는 아래 4개 기준 점수의 산술평균을 반올림해 작성한다.\n\n반드시 {\"rawScore\":0,\"resultLabel\":\"pass|partial|needs_practice\",\"errorCount\":0,\"criteria\":{\"taskAchievementOrResponse\":0,\"taskAchievementOrResponseEvidence\":\"\",\"coherenceCohesion\":0,\"coherenceCohesionEvidence\":\"\",\"lexicalResource\":0,\"lexicalResourceEvidence\":\"\",\"grammaticalRangeAccuracy\":0,\"grammaticalRangeAccuracyEvidence\":\"\"},\"feedback\":{\"correctedAnswer\":\"\",\"errors\":[{\"original\":\"\",\"correction\":\"\",\"reason\":\"\"}],\"synonyms\":[\"\"],\"usefulExpressions\":[\"\"],\"improvedAnswer\":\"\",\"keyLearning\":\"\",\"nextFocus\":\"\"},\"skills\":[{\"code\":\"\",\"qualityScore\":0,\"evidenceSummary\":\"\"}]} 형식으로 반환하세요.`;
     const evaluation = jsonObject((await codex.get(user.id).runLearningPrompt(prompt)).text);
-    const rawScore = Math.max(0,Math.min(100,number(evaluation.rawScore,50)));
+    const criteria = criterionRows(evaluation, task);
+    const rawScore = Math.round(criteria.reduce((sum, criterion) => sum + criterion.score, 0) / criteria.length);
     const hintPenalty = usedHints.rows.reduce((sum,row)=>sum+Number(row.penalty_score),0);
     const effectiveScore = Math.max(0,rawScore-hintPenalty);
     const resultLabel = ['pass','partial','needs_practice'].includes(text(evaluation.resultLabel,30)) ? text(evaluation.resultLabel,30) : effectiveScore >= 78 ? 'pass' : effectiveScore >= 60 ? 'partial' : 'needs_practice';
@@ -383,8 +443,10 @@ export function registerWritingRoutes(app: Hono<{ Variables: Variables }>, pool:
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      const result = await client.query(`INSERT INTO writing_attempt_results(session_item_id,answer_text,answer_word_count,answer_character_count,evaluation_status,evaluated_at,raw_score,hint_penalty_score,effective_score,result_label,error_count,feedback_json,affects_progress,feedback_released_at,evaluation_model) VALUES($1,$2,$3,$4,'completed',NOW(),$5,$6,$7,$8,$9,$10,$11,CASE WHEN $12 THEN NOW() ELSE NULL END,'gpt-5.6-luna') RETURNING id`,[itemId,answer,words,[...answer].length,rawScore,hintPenalty,effectiveScore,resultLabel,Math.max(0,Math.round(number(evaluation.errorCount,0))),JSON.stringify(evaluation.feedback && typeof evaluation.feedback==='object'?evaluation.feedback:{}),affects,item.session_type === 'learning']);
+      const feedback = evaluation.feedback && typeof evaluation.feedback === 'object' ? evaluation.feedback as Record<string, unknown> : {};
+      const result = await client.query(`INSERT INTO writing_attempt_results(session_item_id,answer_text,answer_word_count,answer_character_count,evaluation_status,evaluated_at,raw_score,hint_penalty_score,effective_score,result_label,error_count,feedback_json,affects_progress,feedback_released_at,evaluation_model,rule_version) VALUES($1,$2,$3,$4,'completed',NOW(),$5,$6,$7,$8,$9,$10,$11,CASE WHEN $12 THEN NOW() ELSE NULL END,'gpt-5.6-luna',$13) RETURNING id`,[itemId,answer,words,[...answer].length,rawScore,hintPenalty,effectiveScore,resultLabel,Math.max(0,Math.round(number(evaluation.errorCount,0))),JSON.stringify({...feedback,criteria,stageExpectation}),affects,item.session_type === 'learning',WRITING_RULE_VERSION]);
       const attemptId=Number(result.rows[0].id); const outputSkills=asArray(evaluation.skills);
+      for (const criterion of criteria) await client.query(`INSERT INTO writing_attempt_criterion_results(attempt_result_id,criterion_code,raw_score,descriptor_target,evidence_summary) VALUES($1,$2,$3,$4,$5)`, [attemptId,criterion.code,criterion.score,`${item.internal_stage_snapshot} · ${taskCriterion}`,criterion.evidence]);
       for (const skill of skillRows.rows) { const output=outputSkills.find((entry)=>entry&&typeof entry==='object'&&text((entry as Record<string,unknown>).code,120)===skill.skill_code) as Record<string,unknown>|undefined; const quality=Math.max(0,Math.min(100,number(output?.qualityScore,rawScore))); const penalty=usedHints.rows.filter((hint)=>hint.skill_code===skill.skill_code).reduce((sum,hint)=>sum+Number(hint.penalty_score),0); await client.query(`INSERT INTO writing_attempt_skill_results(attempt_result_id,skill_code,quality_score,hint_penalty_score,effective_score,weight_applied,evidence_summary) VALUES($1,$2,$3,$4,$5,$6,$7)`,[attemptId,skill.skill_code,quality,penalty,Math.max(0,quality-penalty),skill.weight,text(output?.evidenceSummary,1000)]); }
       await client.query(`UPDATE writing_session_items SET status='evaluated',completed_at=NOW() WHERE id=$1`,[itemId]);
       const remaining=await client.query(`SELECT COUNT(*)::INTEGER AS count FROM writing_session_items WHERE session_id=$1 AND status<>'evaluated'`,[sessionId]);
