@@ -258,10 +258,8 @@ function HintMenu({
               <span className="text-xs font-bold tracking-[.1em] text-[#d76a47]">
                 HINT 5 · Paragraphs
               </span>
-              {structureGuide.used ? (
+              {structureGuide.used && (
                 <Check className="size-4 shrink-0 text-[#38634f]" />
-              ) : (
-                <CircleHelp className="size-4 shrink-0 text-[#8a756b]" />
               )}
             </button>
           )}
