@@ -222,38 +222,18 @@ function MapFeature({
   const pointString = points.map((point) => `${point.x},${point.y}`).join(' ');
   const isBridge = type === 'bridge' || /\bbridge\b/i.test(name);
   if (type === 'road' || type === 'river' || type === 'path') {
-    const start = points[0] ?? { x, y };
-    const end = points[points.length - 1] ?? { x: x + width, y: y + height };
-    const roadName = type === 'road' ? name || 'Road' : '';
     return (
-      <g>
-        <polyline
-          points={pointString || `${x},${y} ${x + width},${y + height}`}
-          fill="none"
-          stroke={
-            type === 'river' ? '#3c8daa' : type === 'path' ? color : '#62736f'
-          }
-          strokeWidth={type === 'road' ? 2.35 : 2.6}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeDasharray={type === 'path' ? '3 2' : undefined}
-        />
-        {roadName && (
-          <text
-            x={(start.x + end.x) / 2}
-            y={(start.y + end.y) / 2 - 2.5}
-            textAnchor="middle"
-            fontSize="3.6"
-            fontWeight="700"
-            fill="#43504d"
-            stroke="#eaf0eb"
-            strokeWidth="1.5"
-            paintOrder="stroke"
-          >
-            {roadName}
-          </text>
-        )}
-      </g>
+      <polyline
+        points={pointString || `${x},${y} ${x + width},${y + height}`}
+        fill="none"
+        stroke={
+          type === 'river' ? '#3c8daa' : type === 'path' ? color : '#62736f'
+        }
+        strokeWidth={type === 'road' ? 2.35 : 2.6}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeDasharray={type === 'path' ? '3 2' : undefined}
+      />
     );
   }
   if (isBridge) {
