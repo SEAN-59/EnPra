@@ -406,27 +406,47 @@ export function WritingBoardClient() {
           </a>
         </div>
       </section>
-      <section className="grid gap-4 lg:grid-cols-3">
+      <section className="rounded-2xl border border-[#ded7ca] bg-[#fffdf8] p-5 sm:p-6">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-bold tracking-[0.12em] text-[#d76a47]">
+              LEARNING DIAGNOSIS
+            </p>
+            <h3 className="mt-2 font-serif text-2xl text-[#24333a]">
+              우선 보강할 항목
+            </h3>
+          </div>
+          {overview.topSkills.length > 0 && (
+            <span className="rounded-full bg-[#fff0e9] px-3 py-1.5 text-xs font-bold text-[#b85437]">
+              최근 14일 기준
+            </span>
+          )}
+        </div>
         {overview.topSkills.length ? (
-          overview.topSkills.map((skill, index) => (
-            <article
-              key={skill.code}
-              className="rounded-2xl border border-[#ded7ca] bg-[#fffdf8] p-5"
-            >
-              <p className="text-xs font-bold tracking-[0.12em] text-[#d76a47]">
-                FOCUS {index + 1}
-              </p>
-              <h3 className="mt-3 font-serif text-xl">{skill.name}</h3>
-              <p className="mt-3 text-sm text-[#69736e]">
-                최근 평균 {Math.round(skill.score)}점 · {skill.evidenceCount}
-                문제
-              </p>
-            </article>
-          ))
+          <div className="mt-5 divide-y divide-[#ece5da] rounded-xl border border-[#ece5da] bg-[#fffcf7] px-4">
+            {overview.topSkills.map((skill, index) => (
+              <div
+                key={skill.code}
+                className="flex items-center justify-between gap-4 py-3.5"
+              >
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="grid size-6 shrink-0 place-items-center rounded-full bg-[#f1ede5] text-xs font-bold text-[#68736e]">
+                    {index + 1}
+                  </span>
+                  <p className="truncate text-sm font-bold text-[#344149]">
+                    {skill.name}
+                  </p>
+                </div>
+                <p className="shrink-0 text-sm text-[#69736e]">
+                  {Math.round(skill.score)}점 · {skill.evidenceCount}문제
+                </p>
+              </div>
+            ))}
+          </div>
         ) : (
-          <article className="rounded-2xl border border-dashed border-[#d7cfc2] bg-[#fbf9f4] p-5 text-sm text-[#69736e] lg:col-span-3">
-            첫 학습 결과가 쌓이면 강점과 보완할 항목을 보여드립니다.
-          </article>
+          <p className="mt-4 text-sm leading-6 text-[#69736e]">
+            첫 학습 결과가 쌓이면 현재 우선 보강할 항목을 보여드립니다.
+          </p>
         )}
       </section>
       {error && <p className="text-sm text-[#c34f32]">{error}</p>}
@@ -1069,6 +1089,7 @@ function Section({ title, value }: { title: string; value: any }) {
 export function WritingNotebookClient() {
   const [entries, setEntries] = useState<any[] | null>(null);
   const [opened, setOpened] = useState<number | null>(null);
+  const [materialOpened, setMaterialOpened] = useState<number | null>(null);
   const [error, setError] = useState('');
   useEffect(() => {
     api<{ entries: any[] }>(undefined, 'notebook')
@@ -1132,6 +1153,34 @@ export function WritingNotebookClient() {
           </button>
           {opened === entry.id && (
             <div className="mt-5 border-t border-[#ece5da] pt-5">
+              {entry.material && Object.keys(entry.material).length > 0 && (
+                <section className="mb-5">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setMaterialOpened(
+                        materialOpened === entry.id ? null : entry.id,
+                      )
+                    }
+                    className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#d7cfc2] bg-[#fffdf8] px-3.5 text-sm font-bold text-[#344149] transition-colors hover:bg-[#f7f2ea]"
+                    aria-expanded={materialOpened === entry.id}
+                  >
+                    <FileText className="size-4 text-[#d76a47]" />
+                    문제 자료 보기
+                    <ChevronRight
+                      className={`size-4 text-[#69736e] transition-transform ${materialOpened === entry.id ? 'rotate-90' : ''}`}
+                    />
+                  </button>
+                  {materialOpened === entry.id && (
+                    <div className="mt-3 rounded-2xl border border-[#e5ddd1] bg-[#fbf9f4] p-3 sm:p-4">
+                      <WritingMaterial
+                        material={entry.material}
+                        title={entry.title}
+                      />
+                    </div>
+                  )}
+                </section>
+              )}
               <p className="text-xs font-bold text-[#69736e]">MY ANSWER</p>
               <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#344149]">
                 {entry.answer}

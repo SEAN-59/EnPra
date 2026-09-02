@@ -1048,7 +1048,7 @@ export function registerWritingRoutes(
 
   app.get('/api/writing/notebook', async (c) => {
     const rows = await pool.query(
-      `SELECT r.id, r.answer_text, r.effective_score, r.result_label, r.error_count, r.feedback_json, r.evaluated_at, q.title, q.prompt, i.task_type FROM writing_attempt_results r JOIN writing_session_items i ON i.id=r.session_item_id JOIN writing_sessions s ON s.id=i.session_id JOIN writing_questions q ON q.id=i.question_id WHERE s.user_id=$1 AND r.affects_progress=TRUE AND r.evaluation_status='completed' AND r.error_count > 0 ORDER BY r.evaluated_at DESC LIMIT 100`,
+      `SELECT r.id, r.answer_text, r.effective_score, r.result_label, r.error_count, r.feedback_json, r.evaluated_at, q.title, q.prompt, q.material_json, i.task_type FROM writing_attempt_results r JOIN writing_session_items i ON i.id=r.session_item_id JOIN writing_sessions s ON s.id=i.session_id JOIN writing_questions q ON q.id=i.question_id WHERE s.user_id=$1 AND r.affects_progress=TRUE AND r.evaluation_status='completed' AND r.error_count > 0 ORDER BY r.evaluated_at DESC LIMIT 100`,
       [c.get('user').id],
     );
     return c.json({
@@ -1056,6 +1056,7 @@ export function registerWritingRoutes(
         id: Number(row.id),
         title: row.title,
         prompt: row.prompt,
+        material: row.material_json,
         taskType: row.task_type,
         answer: row.answer_text,
         score: Number(row.effective_score),
