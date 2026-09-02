@@ -220,20 +220,90 @@ function MapFeature({
   const name = label(feature.label ?? feature.text, '');
   const points = pointList(feature.points);
   const pointString = points.map((point) => `${point.x},${point.y}`).join(' ');
+  const isBridge = type === 'bridge' || /\bbridge\b/i.test(name);
   if (type === 'road' || type === 'river' || type === 'path')
     return (
-      <polyline
-        points={pointString || `${x},${y} ${x + width},${y + height}`}
-        fill="none"
-        stroke={
-          type === 'river' ? '#72a9bd' : type === 'path' ? color : '#f7f3ec'
-        }
-        strokeWidth={type === 'road' ? 4 : 2.5}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeDasharray={type === 'path' ? '3 2' : undefined}
-      />
+      <g>
+        {type === 'road' && (
+          <polyline
+            points={pointString || `${x},${y} ${x + width},${y + height}`}
+            fill="none"
+            stroke="#536764"
+            strokeWidth="6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        )}
+        <polyline
+          points={pointString || `${x},${y} ${x + width},${y + height}`}
+          fill="none"
+          stroke={
+            type === 'river' ? '#3c8daa' : type === 'path' ? color : '#fffdf8'
+          }
+          strokeWidth={type === 'road' ? 2.6 : 3}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeDasharray={type === 'path' ? '3 2' : undefined}
+        />
+      </g>
     );
+  if (isBridge) {
+    const start = points[0] ?? { x, y: y + height / 2 };
+    const end = points[points.length - 1] ?? {
+      x: x + width,
+      y: y + height / 2,
+    };
+    return (
+      <g>
+        <line
+          x1={start.x}
+          y1={start.y}
+          x2={end.x}
+          y2={end.y}
+          stroke="#855f35"
+          strokeWidth="5.5"
+          strokeLinecap="round"
+        />
+        <line
+          x1={start.x}
+          y1={start.y}
+          x2={end.x}
+          y2={end.y}
+          stroke="#f2c46b"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+        />
+        <line
+          x1={start.x + 2}
+          y1={start.y - 3}
+          x2={start.x + 2}
+          y2={start.y + 3}
+          stroke="#855f35"
+          strokeWidth="1.4"
+        />
+        <line
+          x1={end.x - 2}
+          y1={end.y - 3}
+          x2={end.x - 2}
+          y2={end.y + 3}
+          stroke="#855f35"
+          strokeWidth="1.4"
+        />
+        {name && (
+          <text
+            x={(start.x + end.x) / 2}
+            y={(start.y + end.y) / 2 - 4}
+            textAnchor="middle"
+            fontSize="3.5"
+            fontWeight="700"
+            fill="#624624"
+          >
+            {name}
+          </text>
+        )}
+      </g>
+    );
+  }
   if (type === 'arrow') {
     const start = points[0] ?? { x, y };
     const end = points[points.length - 1] ?? { x: x + width, y: y + height };
@@ -263,8 +333,8 @@ function MapFeature({
         width={width}
         height={height}
         rx={type === 'area' ? 1.5 : 3}
-        fill={type === 'area' ? color : '#fffdf8'}
-        fillOpacity={type === 'area' ? 0.28 : 1}
+        fill={type === 'area' ? '#edf1e8' : '#fffdf8'}
+        fillOpacity="1"
         stroke={color}
         strokeWidth="1.2"
       />
