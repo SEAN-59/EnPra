@@ -563,6 +563,18 @@ async function reviewNotebookFeedback(
   );
 }
 
+function normalizedAnswerSections(value: unknown) {
+  return asArray(value)
+    .flatMap((item) => {
+      if (!item || typeof item !== 'object') return [];
+      const row = item as Record<string, unknown>;
+      const label = text(row.label, 80);
+      const content = text(row.text, 8000);
+      return label || content ? [{ label, text: content }] : [];
+    })
+    .slice(0, 4);
+}
+
 async function queryProfile(pool: Pool, userId: string) {
   const result = await pool.query(
     `SELECT * FROM user_writing_profiles WHERE user_id = $1`,
@@ -1105,6 +1117,12 @@ async function sessionPayload(pool: Pool, userId: string, sessionId: number) {
   );
   const current =
     items.rows.find((item) => item.status !== 'evaluated') ?? null;
+  const structureGuide = current
+    ? await pool.query(
+        `SELECT penalty_score FROM writing_session_item_scaffolds WHERE session_item_id = $1 AND scaffold_type = 'paragraph_structure'`,
+        [current.id],
+      )
+    : { rows: [] as Array<{ penalty_score: number }> };
   const currentItem = current
     ? {
         id: Number(current.id),
@@ -1114,6 +1132,10 @@ async function sessionPayload(pool: Pool, userId: string, sessionId: number) {
         purpose: current.item_purpose,
         targetSentenceCount: current.target_sentence_count,
         targetWordCount: current.target_word_count,
+        structureGuideUsed: Boolean(structureGuide.rows[0]),
+        structureGuidePenalty: structureGuide.rows[0]
+          ? Number(structureGuide.rows[0].penalty_score)
+          : 10,
         status: current.status,
         question: serializeQuestion(current),
         result: current.result_id
@@ -1178,7 +1200,7 @@ export async function initializeWritingDatabase(pool: Pool) {
     CREATE TABLE IF NOT EXISTS writing_sessions (id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, session_type TEXT NOT NULL CHECK (session_type IN ('learning','test','promotion_test','placement_test')), status TEXT NOT NULL CHECK (status IN ('generating','in_progress','completed','abandoned')), public_level_snapshot TEXT, level_group_snapshot TEXT, internal_stage_snapshot TEXT, target_public_level TEXT, target_level_group TEXT, expected_item_count SMALLINT NOT NULL, rule_version TEXT NOT NULL DEFAULT 'v1', promotion_recommendation TEXT, promotion_score NUMERIC(5,2), generated_at TIMESTAMPTZ, started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), completed_at TIMESTAMPTZ, abandoned_at TIMESTAMPTZ, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
     CREATE UNIQUE INDEX IF NOT EXISTS writing_sessions_one_active_per_user_idx ON writing_sessions(user_id) WHERE status IN ('generating','in_progress');
     CREATE TABLE IF NOT EXISTS writing_session_items (id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, session_id BIGINT NOT NULL REFERENCES writing_sessions(id) ON DELETE CASCADE, question_id BIGINT NOT NULL REFERENCES writing_questions(id) ON DELETE RESTRICT, item_order SMALLINT NOT NULL, task_type TEXT, exercise_type TEXT NOT NULL, item_purpose TEXT NOT NULL, hint_set_id BIGINT REFERENCES writing_question_hint_sets(id) ON DELETE SET NULL, target_sentence_count SMALLINT, target_word_count SMALLINT, status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','in_progress','submitted','evaluated','abandoned')), assigned_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), completed_at TIMESTAMPTZ, UNIQUE(session_id,item_order));
-    CREATE TABLE IF NOT EXISTS writing_attempt_results (id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, session_item_id BIGINT NOT NULL UNIQUE REFERENCES writing_session_items(id) ON DELETE CASCADE, answer_text TEXT NOT NULL, answer_word_count INTEGER NOT NULL, answer_character_count INTEGER NOT NULL, submitted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), evaluation_status TEXT NOT NULL CHECK (evaluation_status IN ('evaluating','completed','failed')), evaluated_at TIMESTAMPTZ, raw_score NUMERIC(5,2), hint_penalty_score NUMERIC(5,2) NOT NULL DEFAULT 0, effective_score NUMERIC(5,2), result_label TEXT, error_count SMALLINT NOT NULL DEFAULT 0, feedback_json JSONB NOT NULL DEFAULT '{}'::jsonb, affects_progress BOOLEAN NOT NULL DEFAULT TRUE, feedback_released_at TIMESTAMPTZ, rule_version TEXT NOT NULL DEFAULT 'v1', evaluation_model TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+    CREATE TABLE IF NOT EXISTS writing_attempt_results (id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, session_item_id BIGINT NOT NULL UNIQUE REFERENCES writing_session_items(id) ON DELETE CASCADE, answer_text TEXT NOT NULL, answer_sections_json JSONB NOT NULL DEFAULT '[]'::jsonb, answer_word_count INTEGER NOT NULL, answer_character_count INTEGER NOT NULL, submitted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), evaluation_status TEXT NOT NULL CHECK (evaluation_status IN ('evaluating','completed','failed')), evaluated_at TIMESTAMPTZ, raw_score NUMERIC(5,2), hint_penalty_score NUMERIC(5,2) NOT NULL DEFAULT 0, effective_score NUMERIC(5,2), result_label TEXT, error_count SMALLINT NOT NULL DEFAULT 0, feedback_json JSONB NOT NULL DEFAULT '{}'::jsonb, affects_progress BOOLEAN NOT NULL DEFAULT TRUE, feedback_released_at TIMESTAMPTZ, rule_version TEXT NOT NULL DEFAULT 'v1', evaluation_model TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
     CREATE TABLE IF NOT EXISTS writing_attempt_criterion_results (id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, attempt_result_id BIGINT NOT NULL REFERENCES writing_attempt_results(id) ON DELETE CASCADE, criterion_code TEXT NOT NULL CHECK (criterion_code IN ('task_achievement','task_response','coherence_cohesion','lexical_resource','grammatical_range_accuracy')), raw_score NUMERIC(5,2) NOT NULL CHECK (raw_score BETWEEN 0 AND 100), descriptor_target TEXT NOT NULL, evidence_summary TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE(attempt_result_id,criterion_code));
     CREATE TABLE IF NOT EXISTS writing_attempt_skill_results (id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, attempt_result_id BIGINT NOT NULL REFERENCES writing_attempt_results(id) ON DELETE CASCADE, skill_code TEXT NOT NULL REFERENCES writing_skill_catalog(code) ON DELETE RESTRICT, quality_score NUMERIC(5,2) NOT NULL, hint_penalty_score NUMERIC(5,2) NOT NULL DEFAULT 0, effective_score NUMERIC(5,2) NOT NULL, weight_applied NUMERIC(4,3) NOT NULL, evidence_summary TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE(attempt_result_id,skill_code));
     CREATE TABLE IF NOT EXISTS writing_hint_usage_events (id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, session_item_id BIGINT NOT NULL REFERENCES writing_session_items(id) ON DELETE CASCADE, hint_id BIGINT NOT NULL REFERENCES writing_question_hints(id) ON DELETE CASCADE, revealed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE(session_item_id,hint_id));
@@ -1192,6 +1214,7 @@ export async function initializeWritingDatabase(pool: Pool) {
     ALTER TABLE writing_sessions ADD COLUMN IF NOT EXISTS learning_mode TEXT NOT NULL DEFAULT 'standard';
     ALTER TABLE user_writing_skill_states ADD COLUMN IF NOT EXISTS recent_reinforcement_count INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE writing_attempt_results ADD COLUMN IF NOT EXISTS feedback_review_status TEXT NOT NULL DEFAULT 'not_requested';
+    ALTER TABLE writing_attempt_results ADD COLUMN IF NOT EXISTS answer_sections_json JSONB NOT NULL DEFAULT '[]'::jsonb;
     ALTER TABLE writing_attempt_results ADD COLUMN IF NOT EXISTS reviewed_feedback_json JSONB NOT NULL DEFAULT '{}'::jsonb;
     ALTER TABLE writing_attempt_results ADD COLUMN IF NOT EXISTS feedback_reviewed_at TIMESTAMPTZ;
     ALTER TABLE writing_attempt_results ADD COLUMN IF NOT EXISTS feedback_review_model TEXT;
@@ -1205,7 +1228,9 @@ export async function initializeWritingDatabase(pool: Pool) {
       END IF;
     END $$;
     CREATE TABLE IF NOT EXISTS writing_session_focus_skills (session_id BIGINT NOT NULL REFERENCES writing_sessions(id) ON DELETE CASCADE, skill_code TEXT NOT NULL REFERENCES writing_skill_catalog(code) ON DELETE RESTRICT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY(session_id,skill_code));
+    CREATE TABLE IF NOT EXISTS writing_session_item_scaffolds (id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, session_item_id BIGINT NOT NULL REFERENCES writing_session_items(id) ON DELETE CASCADE, scaffold_type TEXT NOT NULL CHECK (scaffold_type IN ('paragraph_structure')), penalty_score NUMERIC(5,2) NOT NULL DEFAULT 10 CHECK (penalty_score >= 0), used_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE(session_item_id,scaffold_type));
     CREATE INDEX IF NOT EXISTS writing_session_focus_skills_skill_idx ON writing_session_focus_skills(skill_code,session_id);
+    CREATE INDEX IF NOT EXISTS writing_session_item_scaffolds_item_idx ON writing_session_item_scaffolds(session_item_id);
   `);
   for (const [code, name, scope] of skills)
     await pool.query(
@@ -1667,6 +1692,26 @@ export function registerWritingRoutes(
   );
 
   app.post(
+    '/api/writing/sessions/:sessionId/items/:itemId/structure-guide',
+    async (c) => {
+      const user = c.get('user');
+      const sessionId = Number(c.req.param('sessionId'));
+      const itemId = Number(c.req.param('itemId'));
+      const valid = await pool.query(
+        `SELECT 1 FROM writing_session_items i JOIN writing_sessions s ON s.id=i.session_id WHERE s.id=$1 AND s.user_id=$2 AND i.id=$3 AND s.session_type='learning' AND i.task_type IN ('task1','task2') AND i.status IN ('pending','in_progress')`,
+        [sessionId, user.id, itemId],
+      );
+      if (!valid.rowCount)
+        return c.json({ error: '이 문제에서는 문단 구조 가이드를 사용할 수 없습니다.' }, 404);
+      await pool.query(
+        `INSERT INTO writing_session_item_scaffolds(session_item_id,scaffold_type,penalty_score) VALUES($1,'paragraph_structure',10) ON CONFLICT(session_item_id,scaffold_type) DO NOTHING`,
+        [itemId],
+      );
+      return c.json({ penaltyScore: 10 });
+    },
+  );
+
+  app.post(
     '/api/writing/sessions/:sessionId/items/:itemId/submit',
     async (c) => {
       const user = c.get('user');
@@ -1674,6 +1719,7 @@ export function registerWritingRoutes(
       const itemId = Number(c.req.param('itemId'));
       const body = await readBody(c);
       const answer = text(body.answer, 30000);
+      const answerSections = normalizedAnswerSections(body.answerSections);
       if (!answer) return c.json({ error: '답안을 입력해 주세요.' }, 400);
       const itemResult = await pool.query(
         `SELECT i.*,q.prompt,q.material_json,q.solution_context,s.session_type,s.internal_stage_snapshot,s.public_level_snapshot FROM writing_session_items i JOIN writing_sessions s ON s.id=i.session_id JOIN writing_questions q ON q.id=i.question_id WHERE s.id=$1 AND s.user_id=$2 AND i.id=$3 AND i.status IN ('pending','in_progress')`,
@@ -1686,6 +1732,13 @@ export function registerWritingRoutes(
         `SELECT h.skill_code,h.penalty_score,h.hint_type FROM writing_hint_usage_events e JOIN writing_question_hints h ON h.id=e.hint_id WHERE e.session_item_id=$1`,
         [itemId],
       );
+      const structureGuide = await pool.query(
+        `SELECT penalty_score FROM writing_session_item_scaffolds WHERE session_item_id=$1 AND scaffold_type='paragraph_structure'`,
+        [itemId],
+      );
+      const structureGuidePenalty = structureGuide.rows[0]
+        ? Number(structureGuide.rows[0].penalty_score)
+        : 0;
       const skillRows = await pool.query(
         `SELECT qs.skill_code,qs.weight FROM writing_question_skills qs WHERE qs.question_id=$1 ORDER BY qs.importance DESC,qs.weight DESC`,
         [item.question_id],
@@ -1703,10 +1756,11 @@ export function registerWritingRoutes(
         String(item.internal_stage_snapshot),
         task,
       );
-      const qualityControls =
+      const baseQualityControls =
         item.rule_version === WRITING_RULE_VERSION
           ? qualityControlsFor(String(item.internal_stage_snapshot))
           : '이 세션이 시작된 당시의 단계별 채점 기준을 유지한다.';
+      const qualityControls = `${baseQualityControls}\n문단 구조 가이드 사용: ${structureGuidePenalty > 0 ? '예' : '아니오'}. 문단별 입력: ${JSON.stringify(answerSections)}. 문단 구조 가이드를 사용했더라도 각 문단이 해당 역할을 수행하는지는 답안 품질 기준으로 평가한다. 가이드 사용에 따른 최종 점수 감점은 서버가 별도로 처리한다.`;
       const prompt = `EnPra IELTS Writing 답안을 채점하세요. JSON만 반환하세요. 이것은 공식 IELTS 점수표 자체가 아니라, 공식 IELTS Writing public band descriptors의 4개 축을 내부 학습 단계에 적용한 0~100 수행 점수입니다.\n현재 내부 단계: ${item.internal_stage_snapshot}\n이 단계의 과제 기대치: ${stageExpectation}\n이 단계의 표현·응집·문법 기준: ${qualityControls}\n과제: ${task}; 핵심 과제 축: ${taskCriterion}; 목표 최소 분량: ${targetWords > 0 ? `${targetWords}단어` : '기초 3문장'}.\n문제: ${item.prompt}\n자료: ${JSON.stringify(item.material_json)}\n내부 정답 정보: ${JSON.stringify(item.solution_context)}\n사용자 답안: ${answer}\n평가 스킬: ${skillRows.rows.map((row) => row.skill_code).join(', ')}\n\n채점 원칙:\n1. 같은 답안이라도 현재 내부 단계의 기대치로 평가한다. 5.0C에서는 Band 5 목표를 충족하면 높은 점수를 받을 수 있지만, 7.0A에서는 Band 7 목표를 충족해야 같은 높은 점수를 받을 수 있다.\n2. ${task === 'task1' ? '자료를 정확히 읽고 Overview·핵심 특징·비교를 평가한다.' : task === 'task2' ? '질문의 모든 부분, 명확한 입장, 근거의 발전을 평가한다.' : '기초 문장의 정확성·연결·과제 충족을 평가한다.'}\n3. 분량이 목표보다 짧으면 ${taskCriterion}에 반영한다. 다만 단어 수만으로 점수를 높게 주지 말고 내용의 질과 정확성을 우선한다.\n4. Coherence & Cohesion, Lexical Resource, Grammatical Range & Accuracy를 각각 독립적으로 평가한다. 힌트 감점은 서버가 별도로 처리하므로 여기서는 감점하지 않는다.\n5. rawScore는 아래 4개 기준 점수의 산술평균을 반올림해 작성한다.\n\n반드시 {\"rawScore\":0,\"resultLabel\":\"pass|partial|needs_practice\",\"errorCount\":0,\"criteria\":{\"taskAchievementOrResponse\":0,\"taskAchievementOrResponseEvidence\":\"\",\"coherenceCohesion\":0,\"coherenceCohesionEvidence\":\"\",\"lexicalResource\":0,\"lexicalResourceEvidence\":\"\",\"grammaticalRangeAccuracy\":0,\"grammaticalRangeAccuracyEvidence\":\"\"},\"feedback\":{\"correctedAnswer\":\"\",\"errors\":[{\"original\":\"\",\"correction\":\"\",\"reason\":\"\"}],\"synonyms\":[\"\"],\"usefulExpressions\":[\"\"],\"improvedAnswer\":\"\",\"keyLearning\":\"\",\"nextFocus\":\"\"},\"skills\":[{\"code\":\"\",\"qualityScore\":0,\"evidenceSummary\":\"\"}]} 형식으로 반환하세요.`;
       const evaluation = jsonObject(
         (await codex.get(user.id).runLearningPrompt(prompt)).text,
@@ -1718,7 +1772,7 @@ export function registerWritingRoutes(
       );
       const hintPenalty = usedHints.rows.reduce(
         (sum, row) => sum + Number(row.penalty_score),
-        0,
+        structureGuidePenalty,
       );
       const effectiveScore = Math.max(0, rawScore - hintPenalty);
       const resultLabel = ['pass', 'partial', 'needs_practice'].includes(
@@ -1740,10 +1794,11 @@ export function registerWritingRoutes(
             ? (evaluation.feedback as Record<string, unknown>)
             : {};
         const result = await client.query(
-          `INSERT INTO writing_attempt_results(session_item_id,answer_text,answer_word_count,answer_character_count,evaluation_status,evaluated_at,raw_score,hint_penalty_score,effective_score,result_label,error_count,feedback_json,affects_progress,feedback_released_at,evaluation_model,rule_version) VALUES($1,$2,$3,$4,'completed',NOW(),$5,$6,$7,$8,$9,$10,$11,CASE WHEN $12 THEN NOW() ELSE NULL END,'gpt-5.6-luna',$13) RETURNING id`,
+          `INSERT INTO writing_attempt_results(session_item_id,answer_text,answer_sections_json,answer_word_count,answer_character_count,evaluation_status,evaluated_at,raw_score,hint_penalty_score,effective_score,result_label,error_count,feedback_json,affects_progress,feedback_released_at,evaluation_model,rule_version) VALUES($1,$2,$3,$4,$5,'completed',NOW(),$6,$7,$8,$9,$10,$11,$12,CASE WHEN $13 THEN NOW() ELSE NULL END,'gpt-5.6-luna',$14) RETURNING id`,
           [
             itemId,
             answer,
+            JSON.stringify(answerSections),
             words,
             [...answer].length,
             rawScore,
@@ -1751,7 +1806,7 @@ export function registerWritingRoutes(
             effectiveScore,
             resultLabel,
             Math.max(0, Math.round(number(evaluation.errorCount, 0))),
-            JSON.stringify({ ...feedback, criteria, stageExpectation }),
+            JSON.stringify({ ...feedback, criteria, stageExpectation, structureGuideUsed: structureGuidePenalty > 0, structureGuidePenalty }),
             affects,
             item.session_type === 'learning',
             WRITING_RULE_VERSION,

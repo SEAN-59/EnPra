@@ -192,13 +192,19 @@ function AiProgressOverlay({
 function HintMenu({
   hints,
   onReveal,
+  structureGuide,
 }: {
   hints: Array<any>;
   onReveal: (hintId: number) => void;
+  structureGuide?: {
+    available: boolean;
+    used: boolean;
+    onUse: () => void;
+  };
 }) {
   const [open, setOpen] = useState(false);
   const [selectedHintId, setSelectedHintId] = useState<number | null>(null);
-  if (!hints.length) return null;
+  if (!hints.length && !structureGuide?.available) return null;
   const labels: Record<string, string> = {
     structure: 'Structure',
     grammar: 'Grammar',
@@ -238,6 +244,25 @@ function HintMenu({
               )}
             </button>
           ))}
+          {structureGuide?.available && (
+            <button
+              type="button"
+              onClick={() => {
+                if (!structureGuide.used) structureGuide.onUse();
+                setOpen(false);
+              }}
+              className="flex w-full items-center justify-between gap-3 rounded-xl px-3 py-3 text-left transition-colors hover:bg-[#fff8f4]"
+            >
+              <span className="text-xs font-bold tracking-[.1em] text-[#d76a47]">
+                HINT 5 · Paragraphs
+              </span>
+              {structureGuide.used ? (
+                <Check className="size-4 shrink-0 text-[#38634f]" />
+              ) : (
+                <span className="text-xs font-semibold text-[#8a756b]">-10점</span>
+              )}
+            </button>
+          )}
         </div>
       )}
       <Dialog
@@ -813,7 +838,11 @@ export function WritingSessionClient({ sessionId }: { sessionId: number }) {
   const router = useRouter();
   const [session, setSession] = useState<any>(null);
   const [answer, setAnswer] = useState('');
+  const [answerSections, setAnswerSections] = useState<
+    Array<{ label: string; text: string }>
+  >([]);
   const [busy, setBusy] = useState(false);
+  const [structureGuideBusy, setStructureGuideBusy] = useState(false);
   const [error, setError] = useState('');
   const [feedback, setFeedback] = useState<any>(null);
   const load = () =>
@@ -829,6 +858,32 @@ export function WritingSessionClient({ sessionId }: { sessionId: number }) {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const current = session?.currentItem;
   const isLearning = session?.type === 'learning';
+  const structureLabels =
+    current?.taskType === 'task1'
+      ? ['Introduction', 'Overview', 'Body 1', 'Body 2']
+      : current?.taskType === 'task2'
+        ? ['Introduction', 'Body 1', 'Body 2', 'Conclusion']
+        : [];
+  const structureGuideAvailable = isLearning && structureLabels.length > 0;
+  const structureGuideUsed = Boolean(current?.structureGuideUsed);
+  const submittedAnswer = structureGuideUsed
+    ? answerSections
+        .map((section) => section.text.trim())
+        .filter(Boolean)
+        .join('\n\n')
+    : answer;
+  useEffect(() => {
+    if (!current) return;
+    if (current.structureGuideUsed) {
+      setAnswerSections((previous) =>
+        previous.length
+          ? previous
+          : structureLabels.map((label) => ({ label, text: '' })),
+      );
+      return;
+    }
+    setAnswerSections([]);
+  }, [current?.id, current?.structureGuideUsed]); // eslint-disable-line react-hooks/exhaustive-deps
   const reveal = (hintId: number) => {
     if (
       !current ||
@@ -855,7 +910,7 @@ export function WritingSessionClient({ sessionId }: { sessionId: number }) {
     );
   };
   const submit = async () => {
-    if (!answer.trim()) return;
+    if (!submittedAnswer.trim()) return;
     setBusy(true);
     setError('');
     try {
@@ -863,15 +918,52 @@ export function WritingSessionClient({ sessionId }: { sessionId: number }) {
         action: 'submit',
         sessionId,
         itemId: current.id,
-        answer,
+        answer: submittedAnswer,
+        answerSections: structureGuideUsed ? answerSections : [],
       });
       setSession(result.session);
       setFeedback(result.result);
       setAnswer('');
+      setAnswerSections([]);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : '채점하지 못했습니다.');
     } finally {
       setBusy(false);
+    }
+  };
+  const useStructureGuide = async () => {
+    if (!current || structureGuideUsed || !structureGuideAvailable) return;
+    setStructureGuideBusy(true);
+    setError('');
+    try {
+      await api({
+        action: 'use-structure-guide',
+        sessionId,
+        itemId: current.id,
+      });
+      setAnswerSections(
+        structureLabels.map((label, index) => ({
+          label,
+          text: index === 0 ? answer : '',
+        })),
+      );
+      setAnswer('');
+      setSession((previous: any) => ({
+        ...previous,
+        currentItem: {
+          ...previous.currentItem,
+          structureGuideUsed: true,
+          structureGuidePenalty: 10,
+        },
+      }));
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : '문단 구조 가이드를 열지 못했습니다.',
+      );
+    } finally {
+      setStructureGuideBusy(false);
     }
   };
   const abandon = async () => {
@@ -1038,18 +1130,55 @@ export function WritingSessionClient({ sessionId }: { sessionId: number }) {
           <HintMenu
             hints={isLearning ? (session.hints ?? []) : []}
             onReveal={reveal}
+            structureGuide={{
+              available: structureGuideAvailable,
+              used: structureGuideUsed,
+              onUse: useStructureGuide,
+            }}
           />
-          <textarea
-            value={answer}
-            onChange={(event) => setAnswer(event.target.value)}
-            placeholder="영어로 답안을 작성하세요."
-            className="mt-3 min-h-52 w-full resize-y rounded-2xl border border-[#d7cfc2] bg-[#fffdf8] p-4 text-base leading-7 outline-none focus:border-[#d76a47]"
-          />
+          {structureGuideUsed ? (
+            <div className="mt-3 space-y-4">
+              <div className="rounded-xl border border-[#f0cbbb] bg-[#fff8f4] px-4 py-3 text-sm leading-6 text-[#8a4a37]">
+                문단 구조 가이드를 사용 중입니다. 문단별 역할을 확인하며 작성해 보세요. 최종 내부 점수에서 10점이 차감됩니다.
+              </div>
+              {answerSections.map((section, index) => (
+                <label key={section.label} className="block">
+                  <span className="mb-2 flex items-center gap-2 text-xs font-bold tracking-[.12em] text-[#d76a47]">
+                    <span>SECTION {index + 1}</span>
+                    <span className="text-[#314047]">{section.label}</span>
+                  </span>
+                  <textarea
+                    value={section.text}
+                    onChange={(event) =>
+                      setAnswerSections((previous) =>
+                        previous.map((item, itemIndex) =>
+                          itemIndex === index
+                            ? { ...item, text: event.target.value }
+                            : item,
+                        ),
+                      )
+                    }
+                    placeholder={`${section.label} 문단을 영어로 작성하세요.`}
+                    className="min-h-36 w-full resize-y rounded-2xl border border-[#d7cfc2] bg-[#fffdf8] p-4 text-base leading-7 outline-none focus:border-[#d76a47]"
+                  />
+                </label>
+              ))}
+            </div>
+          ) : (
+            <textarea
+              value={answer}
+              onChange={(event) => setAnswer(event.target.value)}
+              placeholder="영어로 답안을 작성하세요."
+              className="mt-3 min-h-52 w-full resize-y rounded-2xl border border-[#d7cfc2] bg-[#fffdf8] p-4 text-base leading-7 outline-none focus:border-[#d76a47]"
+            />
+          )}
         </div>
         <div className="mt-3 flex items-center justify-between text-sm text-[#7b827e]">
           <span>
-            {answer.trim() ? answer.trim().split(/\s+/).length : 0} words ·{' '}
-            {[...answer].length} chars
+            {submittedAnswer.trim()
+              ? submittedAnswer.trim().split(/\s+/).length
+              : 0}{' '}
+            words · {[...submittedAnswer].length} chars
           </span>
           {current.targetWordCount && (
             <span>권장 {current.targetWordCount}+ words</span>
@@ -1057,7 +1186,7 @@ export function WritingSessionClient({ sessionId }: { sessionId: number }) {
         </div>
         {error && <p className="mt-3 text-sm text-[#c34f32]">{error}</p>}
         <Button
-          disabled={busy || !answer.trim()}
+          disabled={busy || structureGuideBusy || !submittedAnswer.trim()}
           onClick={submit}
           className="mt-5 w-full"
         >
