@@ -76,7 +76,7 @@ const startLevels = [
 export function WritingBoardClient() {
   const router = useRouter();
   const [overview, setOverview] = useState<Overview | null>(null); const [dialog, setDialog] = useState(false); const [busy, setBusy] = useState(false); const [error, setError] = useState('');
-  const load = () => api<Overview>().then((data) => { setOverview(data); if (data.activeSession) router.replace(`/writing/session/${data.activeSession.id}`); }).catch((cause: Error) => setError(cause.message));
+  const load = () => api<Overview>().then(setOverview).catch((cause: Error) => setError(cause.message));
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const choose = async (level: string) => { setBusy(true); setError(''); try { const result = await api<{ sessionId?: number; active?: boolean }>({ action: 'placement', level }); if (result.sessionId) router.push(`/writing/session/${result.sessionId}`); else router.push('/writing/practice'); } catch (cause) { setError(cause instanceof Error ? cause.message : '레벨을 설정하지 못했습니다.'); } finally { setBusy(false); } };
   if (!overview) return <section className="mt-7 grid min-h-56 place-items-center rounded-3xl border border-dashed border-[#d7cfc2]"><Loader2 className="size-5 animate-spin text-[#d76a47]" /></section>;
@@ -120,11 +120,10 @@ function Feedback({ data }: { data: any }) { if(!data||typeof data!=='object')re
 function Section({title,value}:{title:string;value:any}){const content=typeof value==='string'?value.trim():'';return content?<section><h3 className="font-bold text-[#24333a]">{title}</h3><p className="mt-2 whitespace-pre-wrap text-[#69736e]">{content}</p></section>:null;}
 
 export function WritingNotebookClient() {
-  const router = useRouter();
   const [entries, setEntries] = useState<any[] | null>(null);
   const [opened, setOpened] = useState<number | null>(null);
   const [error, setError] = useState('');
-  useEffect(() => { Promise.all([api<Overview>(), api<{ entries: any[] }>(undefined, 'notebook')]).then(([overview, notebook]) => { if (overview.activeSession) router.replace(`/writing/session/${overview.activeSession.id}`); else setEntries(notebook.entries); }).catch((cause: Error) => setError(cause.message)); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { api<{ entries: any[] }>(undefined, 'notebook').then((notebook) => setEntries(notebook.entries)).catch((cause: Error) => setError(cause.message)); }, []);
   if (error) return <section className="mt-7 rounded-3xl border border-[#efd2c7] bg-[#fff8f4] p-6 text-sm text-[#a64b32]">{error}</section>;
   if (!entries) return <section className="mt-7 grid min-h-56 place-items-center rounded-3xl border border-dashed border-[#d7cfc2]"><Loader2 className="size-5 animate-spin text-[#d76a47]" /></section>;
   if (!entries.length) return <section className="mt-7 rounded-3xl border border-dashed border-[#d7cfc2] bg-[#fbf9f4] p-10 text-center"><BookOpenCheck className="mx-auto size-8 text-[#d76a47]"/><h2 className="mt-4 font-serif text-3xl">아직 정리할 오답이 없어요.</h2><p className="mx-auto mt-3 max-w-md text-sm leading-6 text-[#69736e]">학습과 테스트에서 보완할 답안이 생기면 이곳에 원문과 첨삭을 함께 기록합니다.</p></section>;
