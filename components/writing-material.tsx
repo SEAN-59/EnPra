@@ -223,29 +223,17 @@ function MapFeature({
   const isBridge = type === 'bridge' || /\bbridge\b/i.test(name);
   if (type === 'road' || type === 'river' || type === 'path')
     return (
-      <g>
-        {type === 'road' && (
-          <polyline
-            points={pointString || `${x},${y} ${x + width},${y + height}`}
-            fill="none"
-            stroke="#536764"
-            strokeWidth="6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        )}
-        <polyline
-          points={pointString || `${x},${y} ${x + width},${y + height}`}
-          fill="none"
-          stroke={
-            type === 'river' ? '#3c8daa' : type === 'path' ? color : '#fffdf8'
-          }
-          strokeWidth={type === 'road' ? 2.6 : 3}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeDasharray={type === 'path' ? '3 2' : undefined}
-        />
-      </g>
+      <polyline
+        points={pointString || `${x},${y} ${x + width},${y + height}`}
+        fill="none"
+        stroke={
+          type === 'river' ? '#3c8daa' : type === 'path' ? color : '#62736f'
+        }
+        strokeWidth={type === 'road' ? 2.35 : 2.6}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeDasharray={type === 'path' ? '3 2' : undefined}
+      />
     );
   if (isBridge) {
     const start = points[0] ?? { x, y: y + height / 2 };
@@ -253,52 +241,54 @@ function MapFeature({
       x: x + width,
       y: y + height / 2,
     };
+    const distance = Math.hypot(end.x - start.x, end.y - start.y) || 1;
+    const offsetX = (-(end.y - start.y) / distance) * 1.3;
+    const offsetY = ((end.x - start.x) / distance) * 1.3;
+    const displayName = name.toLowerCase() === 'bridge' ? '' : name;
     return (
       <g>
         <line
-          x1={start.x}
-          y1={start.y}
-          x2={end.x}
-          y2={end.y}
-          stroke="#855f35"
-          strokeWidth="5.5"
-          strokeLinecap="round"
+          x1={start.x + offsetX}
+          y1={start.y + offsetY}
+          x2={end.x + offsetX}
+          y2={end.y + offsetY}
+          stroke="#5b625f"
+          strokeWidth="1.25"
         />
         <line
-          x1={start.x}
-          y1={start.y}
-          x2={end.x}
-          y2={end.y}
-          stroke="#f2c46b"
-          strokeWidth="2.2"
-          strokeLinecap="round"
+          x1={start.x - offsetX}
+          y1={start.y - offsetY}
+          x2={end.x - offsetX}
+          y2={end.y - offsetY}
+          stroke="#5b625f"
+          strokeWidth="1.25"
         />
         <line
-          x1={start.x + 2}
-          y1={start.y - 3}
-          x2={start.x + 2}
-          y2={start.y + 3}
-          stroke="#855f35"
-          strokeWidth="1.4"
+          x1={start.x + offsetX}
+          y1={start.y + offsetY}
+          x2={start.x - offsetX}
+          y2={start.y - offsetY}
+          stroke="#5b625f"
+          strokeWidth="1"
         />
         <line
-          x1={end.x - 2}
-          y1={end.y - 3}
-          x2={end.x - 2}
-          y2={end.y + 3}
-          stroke="#855f35"
-          strokeWidth="1.4"
+          x1={end.x + offsetX}
+          y1={end.y + offsetY}
+          x2={end.x - offsetX}
+          y2={end.y - offsetY}
+          stroke="#5b625f"
+          strokeWidth="1"
         />
-        {name && (
+        {displayName && (
           <text
             x={(start.x + end.x) / 2}
             y={(start.y + end.y) / 2 - 4}
             textAnchor="middle"
             fontSize="3.5"
             fontWeight="700"
-            fill="#624624"
+            fill="#4f5a56"
           >
-            {name}
+            {displayName}
           </text>
         )}
       </g>
