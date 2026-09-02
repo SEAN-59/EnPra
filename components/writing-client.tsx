@@ -199,6 +199,7 @@ function HintMenu({
   structureGuide?: {
     available: boolean;
     used: boolean;
+    busy: boolean;
     onUse: () => void;
   };
 }) {
@@ -247,11 +248,12 @@ function HintMenu({
           {structureGuide?.available && (
             <button
               type="button"
+              disabled={structureGuide.busy}
               onClick={() => {
-                if (!structureGuide.used) structureGuide.onUse();
+                structureGuide.onUse();
                 setOpen(false);
               }}
-              className="flex w-full items-center justify-between gap-3 rounded-xl px-3 py-3 text-left transition-colors hover:bg-[#fff8f4]"
+              className="flex w-full items-center justify-between gap-3 rounded-xl px-3 py-3 text-left transition-colors hover:bg-[#fff8f4] disabled:cursor-wait disabled:opacity-60"
             >
               <span className="text-xs font-bold tracking-[.1em] text-[#d76a47]">
                 HINT 5 · Paragraphs
@@ -859,11 +861,9 @@ export function WritingSessionClient({ sessionId }: { sessionId: number }) {
   const current = session?.currentItem;
   const isLearning = session?.type === 'learning';
   const structureLabels =
-    current?.taskType === 'task1'
-      ? ['Introduction', 'Overview', 'Body 1', 'Body 2']
-      : current?.taskType === 'task2'
-        ? ['Introduction', 'Body 1', 'Body 2', 'Conclusion']
-        : [];
+    current?.taskType === 'task1' || current?.taskType === 'task2'
+      ? ['서론', '본론 1', '본론 2']
+      : [];
   const structureGuideAvailable = isLearning && structureLabels.length > 0;
   const structureGuideUsed = Boolean(current?.structureGuideUsed);
   const submittedAnswer = structureGuideUsed
@@ -932,28 +932,38 @@ export function WritingSessionClient({ sessionId }: { sessionId: number }) {
     }
   };
   const useStructureGuide = async () => {
-    if (!current || structureGuideUsed || !structureGuideAvailable) return;
+    if (!current || !structureGuideAvailable) return;
     setStructureGuideBusy(true);
     setError('');
     try {
-      await api({
+      const result = await api<{ enabled: boolean }>({
         action: 'use-structure-guide',
         sessionId,
         itemId: current.id,
       });
-      setAnswerSections(
-        structureLabels.map((label, index) => ({
-          label,
-          text: index === 0 ? answer : '',
-        })),
-      );
-      setAnswer('');
+      if (result.enabled) {
+        setAnswerSections(
+          structureLabels.map((label, index) => ({
+            label,
+            text: index === 0 ? answer : '',
+          })),
+        );
+        setAnswer('');
+      } else {
+        setAnswer(
+          answerSections
+            .map((section) => section.text.trim())
+            .filter(Boolean)
+            .join('\n\n'),
+        );
+        setAnswerSections([]);
+      }
       setSession((previous: any) => ({
         ...previous,
         currentItem: {
           ...previous.currentItem,
-          structureGuideUsed: true,
-          structureGuidePenalty: 10,
+          structureGuideUsed: result.enabled,
+          structureGuidePenalty: result.enabled ? 10 : 0,
         },
       }));
     } catch (cause) {
@@ -1133,6 +1143,7 @@ export function WritingSessionClient({ sessionId }: { sessionId: number }) {
             structureGuide={{
               available: structureGuideAvailable,
               used: structureGuideUsed,
+              busy: structureGuideBusy,
               onUse: useStructureGuide,
             }}
           />

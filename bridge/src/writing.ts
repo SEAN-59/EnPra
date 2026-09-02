@@ -1703,11 +1703,22 @@ export function registerWritingRoutes(
       );
       if (!valid.rowCount)
         return c.json({ error: '이 문제에서는 문단 구조 가이드를 사용할 수 없습니다.' }, 404);
+      const existing = await pool.query(
+        `SELECT 1 FROM writing_session_item_scaffolds WHERE session_item_id=$1 AND scaffold_type='paragraph_structure'`,
+        [itemId],
+      );
+      if (existing.rowCount) {
+        await pool.query(
+          `DELETE FROM writing_session_item_scaffolds WHERE session_item_id=$1 AND scaffold_type='paragraph_structure'`,
+          [itemId],
+        );
+        return c.json({ enabled: false });
+      }
       await pool.query(
         `INSERT INTO writing_session_item_scaffolds(session_item_id,scaffold_type,penalty_score) VALUES($1,'paragraph_structure',10) ON CONFLICT(session_item_id,scaffold_type) DO NOTHING`,
         [itemId],
       );
-      return c.json({ penaltyScore: 10 });
+      return c.json({ enabled: true });
     },
   );
 
