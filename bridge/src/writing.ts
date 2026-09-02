@@ -10,7 +10,7 @@ type SessionType = 'learning' | 'test' | 'promotion_test' | 'placement_test';
 type TaskType = 'task1' | 'task2' | 'foundation';
 type IELTSWritingTask = 'task1' | 'task2';
 
-const WRITING_RULE_VERSION = 'v2';
+const WRITING_RULE_VERSION = 'v3';
 
 const levelOrder: PublicLevel[] = ['foundation', '5.0', '5.5', '6.0', '6.5', '7.0'];
 const task1Formats = [
@@ -51,6 +51,22 @@ const assessmentExpectations: Record<string, { label: string; task1: string; tas
   '7.0B': { label: '7.0B', task1: 'Band 7을 안정적으로 넘는 수행을 요구한다. 핵심 특징의 선택과 설명이 매우 정확하고 효율적이며, 데이터 언어·응집·문법에서 체계적 오류가 없어야 한다.', task2: 'Band 7을 안정적으로 넘는 수행을 요구한다. 견해와 근거를 깊이 있고 균형 있게 발전시키며, 정밀한 어휘와 폭넓은 문장 구조를 자연스럽게 통제해야 한다.' },
 };
 
+const stageQualityControls: Record<string, string> = {
+  foundation: '유연하게 채점한다. 단어·표현 반복은 감점하지 않으며 고급 어휘, paraphrase, 복문을 요구하지 않는다. 자료 또는 주제에 맞는 완전한 기초 문장 3개와 기본 주어-동사 일치, 핵심 시제·전치사 오류가 의미를 막지 않는지만 본다. 연결어는 없어도 되고, 한두 개의 기본 연결만 정확하면 충분하다.',
+  '5.0A': '템플릿 학습 단계다. 같은 표현·문장 틀의 반복은 허용한다. 고급 어휘나 복문을 요구하지 않고, 수치·변화·의견 표현의 기본 형태가 정확한지, 단순문이 완전한지만 우선 평가한다. 기본 연결어 하나를 정확히 쓰면 충분하다.',
+  '5.0B': '기본 표현 반복은 허용하지만 같은 문장 틀과 연결어만 계속 쓰면 Coherence 또는 Lexical 점수를 제한한다. 쉬운 어휘를 정확히 쓰는 것이 고급 어휘를 무리하게 쓰는 것보다 낫다. 단순문 중심이어도 되지만 복문을 일부 시도하고, 기본 연결어를 틀리지 않아야 한다.',
+  '5.0C': '제한적인 반복은 허용한다. 다만 대체 가능한 쉬운 핵심 단어·표현이나 같은 연결어를 불필요하게 계속 쓰면 감점한다. 질문 문구를 그대로 복사하지 말고 가능한 범위에서 바꿔 쓴다. 조직은 보이면 되며 다소 기계적인 연결은 허용한다. 단순문 정확성이 우선이지만 일부 복문을 시도해야 한다.',
+  '5.0D': '반복되는 어휘·문장 틀·연결어를 줄여야 한다. 같은 의미의 기본 대체 표현을 상황에 맞게 활용하고, 문단 안에서 이유·설명·예시를 자연스럽게 연결해야 한다. 단순·복문을 섞되 복문 오류가 반복되면 높은 점수를 제한한다. 질문 문구의 단순 복사는 감점한다.',
+  '5.5A': '불필요한 어휘와 연결어 반복은 Lexical·Coherence 점수를 제한한다. 정확한 기본 어휘에 더해 일부 적절한 대체 표현과 collocation을 보여야 한다. 문단별 중심 생각이 분명하고, 연결어는 논리 관계가 있을 때만 사용한다. 단순·복문을 섞어 쓰되 오류가 의미를 방해하면 안 된다.',
+  '5.5B': '어휘 선택은 대체로 정확하고 적절해야 하며, 반복을 줄이기 위한 무리한 동의어 사용은 오히려 감점한다. 연결어 남용이나 기계적 문장 연결은 허용하지 않는다. reference·대명사·문장 구조 변화로 자연스럽게 이어야 하며, 복문 오류는 가끔만 허용한다.',
+  '6.0A': '같은 쉬운 단어·표현·문장 틀의 불필요한 반복은 감점한다. 문맥에 맞는 paraphrase와 정확한 collocation을 사용하고, 연결어뿐 아니라 reference와 문단 구조로 응집을 만든다. 다양한 문장 구조를 사용하되 오류가 반복되거나 의미를 방해하면 높은 점수를 제한한다.',
+  '6.0B': '표현의 범위와 정확성을 더 엄격히 본다. 핵심 전문 용어의 필요한 반복은 허용하지만, 대체 가능한 반복·어색한 동의어·연결어 남용은 감점한다. 복문과 다양한 구조를 대체로 통제해야 하며, 문단과 문장 사이의 흐름은 자연스러워야 한다.',
+  '6.5A': '어휘는 정확성과 유연성을 모두 보여야 한다. 같은 표현을 반복하지 않고 적절한 paraphrase·collocation을 활용하되, 부정확한 고급어휘 사용은 감점한다. 응집 장치는 눈에 띄게 나열하지 않고 자연스럽게 사용한다. 다양한 문장 구조의 오류는 제한적이어야 한다.',
+  '6.5B': '반복·과도한 연결어·질문 문구 복사는 높은 점수를 제한한다. 정확하고 비교적 폭넓은 어휘, 자연스러운 reference, 유연한 문장 연결이 필요하다. 복문을 포함한 다양한 구조를 대체로 정확히 통제해야 하며, 체계적 문법 오류는 허용하지 않는다.',
+  '7.0A': '불필요한 어휘·표현·문장 틀 반복이 거의 없어야 한다. 문맥에 맞는 정교한 paraphrase와 정확한 collocation을 사용하되 과장되거나 부정확한 고급어휘는 감점한다. 연결어를 기계적으로 나열하지 않고 reference·문단 구조·문장 흐름으로 자연스러운 응집을 만든다. 단순·복문을 유연하게 사용하고 오류는 드물며 의미를 방해하면 안 된다.',
+  '7.0B': 'Band 7 이상 안정화 기준이다. 반복은 의도적 강조나 필수 용어를 제외하면 거의 없어야 하며, 폭넓고 정밀한 어휘와 자연스러운 collocation을 안정적으로 통제해야 한다. 응집 장치는 거의 눈에 띄지 않을 정도로 자연스럽고, 다양한 문장 구조의 체계적 오류·어색한 표현·기계적 문단 연결은 높은 점수를 제한한다.',
+};
+
 const stageConfig: Array<[PublicLevel, string | null, string, Record<string, unknown>]> = [
   ['foundation', null, 'foundation', { minEvidence: 6, scoreWindowDays: 14, promotionScore: 78, challengeRatio: 0, targetSentenceCount: 3, expectation: assessmentExpectations.foundation }],
   ['5.0', '5.0_basic', '5.0A', { minEvidence: 6, scoreWindowDays: 14, promotionScore: 78, challengeRatio: 0, targetWordCounts: { task1: 70, task2: 100 }, expectation: assessmentExpectations['5.0A'] }],
@@ -81,6 +97,10 @@ function expectationFor(stage: string, task: TaskType) {
   const expectation = configForStage(stage).expectation as { label?: unknown; task1?: unknown; task2?: unknown } | undefined;
   if (task === 'foundation') return text(expectation?.task1, 4000);
   return text(expectation?.[task], 4000);
+}
+
+function qualityControlsFor(stage: string) {
+  return stageQualityControls[stage] ?? stageQualityControls.foundation;
 }
 
 function pickWeighted<T extends ReadonlyArray<readonly [string, number]>>(items: T): T[number][0] {
@@ -317,8 +337,9 @@ export async function initializeWritingDatabase(pool: Pool) {
   `);
   for (const [code, name, scope] of skills) await pool.query(`INSERT INTO writing_skill_catalog(code,name_ko,task_scope) VALUES($1,$2,$3) ON CONFLICT(code) DO UPDATE SET name_ko = EXCLUDED.name_ko, task_scope = EXCLUDED.task_scope, is_active = TRUE, updated_at = NOW()`, [code,name,scope]);
   for (const [level, group, stage, config] of stageConfig) {
-    await pool.query(`UPDATE writing_level_rules SET config=$5,is_active=TRUE,updated_at=NOW() WHERE public_level=$1 AND level_group IS NOT DISTINCT FROM $2 AND internal_stage=$3 AND rule_version=$4`, [level,group,stage,WRITING_RULE_VERSION,JSON.stringify(config)]);
-    await pool.query(`INSERT INTO writing_level_rules(public_level,level_group,internal_stage,rule_version,config) SELECT $1,$2,$3,$4,$5 WHERE NOT EXISTS (SELECT 1 FROM writing_level_rules WHERE public_level=$1 AND level_group IS NOT DISTINCT FROM $2 AND internal_stage=$3 AND rule_version=$4)`, [level,group,stage,WRITING_RULE_VERSION,JSON.stringify(config)]);
+    const persistedConfig = JSON.stringify({ ...config, qualityControls: qualityControlsFor(stage) });
+    await pool.query(`UPDATE writing_level_rules SET config=$5,is_active=TRUE,updated_at=NOW() WHERE public_level=$1 AND level_group IS NOT DISTINCT FROM $2 AND internal_stage=$3 AND rule_version=$4`, [level,group,stage,WRITING_RULE_VERSION,persistedConfig]);
+    await pool.query(`INSERT INTO writing_level_rules(public_level,level_group,internal_stage,rule_version,config) SELECT $1,$2,$3,$4,$5 WHERE NOT EXISTS (SELECT 1 FROM writing_level_rules WHERE public_level=$1 AND level_group IS NOT DISTINCT FROM $2 AND internal_stage=$3 AND rule_version=$4)`, [level,group,stage,WRITING_RULE_VERSION,persistedConfig]);
   }
 }
 
@@ -431,7 +452,8 @@ export function registerWritingRoutes(app: Hono<{ Variables: Variables }>, pool:
     const targetWords = number(item.target_word_count, 0);
     const taskCriterion = task === 'task2' ? 'Task Response' : 'Task Achievement';
     const stageExpectation = expectationFor(String(item.internal_stage_snapshot), task);
-    const prompt = `EnPra IELTS Writing 답안을 채점하세요. JSON만 반환하세요. 이것은 공식 IELTS 점수표 자체가 아니라, 공식 IELTS Writing public band descriptors의 4개 축을 내부 학습 단계에 적용한 0~100 수행 점수입니다.\n현재 내부 단계: ${item.internal_stage_snapshot}\n이 단계의 기대치: ${stageExpectation}\n과제: ${task}; 핵심 과제 축: ${taskCriterion}; 목표 최소 분량: ${targetWords > 0 ? `${targetWords}단어` : '기초 3문장'}.\n문제: ${item.prompt}\n자료: ${JSON.stringify(item.material_json)}\n내부 정답 정보: ${JSON.stringify(item.solution_context)}\n사용자 답안: ${answer}\n평가 스킬: ${skillRows.rows.map((row)=>row.skill_code).join(', ')}\n\n채점 원칙:\n1. 같은 답안이라도 현재 내부 단계의 기대치로 평가한다. 5.0C에서는 Band 5 목표를 충족하면 높은 점수를 받을 수 있지만, 7.0A에서는 Band 7 목표를 충족해야 같은 높은 점수를 받을 수 있다.\n2. ${task === 'task1' ? '자료를 정확히 읽고 Overview·핵심 특징·비교를 평가한다.' : task === 'task2' ? '질문의 모든 부분, 명확한 입장, 근거의 발전을 평가한다.' : '기초 문장의 정확성·연결·과제 충족을 평가한다.'}\n3. 분량이 목표보다 짧으면 ${taskCriterion}에 반영한다. 다만 단어 수만으로 점수를 높게 주지 말고 내용의 질과 정확성을 우선한다.\n4. Coherence & Cohesion, Lexical Resource, Grammatical Range & Accuracy를 각각 독립적으로 평가한다. 힌트 감점은 서버가 별도로 처리하므로 여기서는 감점하지 않는다.\n5. rawScore는 아래 4개 기준 점수의 산술평균을 반올림해 작성한다.\n\n반드시 {\"rawScore\":0,\"resultLabel\":\"pass|partial|needs_practice\",\"errorCount\":0,\"criteria\":{\"taskAchievementOrResponse\":0,\"taskAchievementOrResponseEvidence\":\"\",\"coherenceCohesion\":0,\"coherenceCohesionEvidence\":\"\",\"lexicalResource\":0,\"lexicalResourceEvidence\":\"\",\"grammaticalRangeAccuracy\":0,\"grammaticalRangeAccuracyEvidence\":\"\"},\"feedback\":{\"correctedAnswer\":\"\",\"errors\":[{\"original\":\"\",\"correction\":\"\",\"reason\":\"\"}],\"synonyms\":[\"\"],\"usefulExpressions\":[\"\"],\"improvedAnswer\":\"\",\"keyLearning\":\"\",\"nextFocus\":\"\"},\"skills\":[{\"code\":\"\",\"qualityScore\":0,\"evidenceSummary\":\"\"}]} 형식으로 반환하세요.`;
+    const qualityControls = item.rule_version === WRITING_RULE_VERSION ? qualityControlsFor(String(item.internal_stage_snapshot)) : '이 세션이 시작된 당시의 단계별 채점 기준을 유지한다.';
+    const prompt = `EnPra IELTS Writing 답안을 채점하세요. JSON만 반환하세요. 이것은 공식 IELTS 점수표 자체가 아니라, 공식 IELTS Writing public band descriptors의 4개 축을 내부 학습 단계에 적용한 0~100 수행 점수입니다.\n현재 내부 단계: ${item.internal_stage_snapshot}\n이 단계의 과제 기대치: ${stageExpectation}\n이 단계의 표현·응집·문법 기준: ${qualityControls}\n과제: ${task}; 핵심 과제 축: ${taskCriterion}; 목표 최소 분량: ${targetWords > 0 ? `${targetWords}단어` : '기초 3문장'}.\n문제: ${item.prompt}\n자료: ${JSON.stringify(item.material_json)}\n내부 정답 정보: ${JSON.stringify(item.solution_context)}\n사용자 답안: ${answer}\n평가 스킬: ${skillRows.rows.map((row)=>row.skill_code).join(', ')}\n\n채점 원칙:\n1. 같은 답안이라도 현재 내부 단계의 기대치로 평가한다. 5.0C에서는 Band 5 목표를 충족하면 높은 점수를 받을 수 있지만, 7.0A에서는 Band 7 목표를 충족해야 같은 높은 점수를 받을 수 있다.\n2. ${task === 'task1' ? '자료를 정확히 읽고 Overview·핵심 특징·비교를 평가한다.' : task === 'task2' ? '질문의 모든 부분, 명확한 입장, 근거의 발전을 평가한다.' : '기초 문장의 정확성·연결·과제 충족을 평가한다.'}\n3. 분량이 목표보다 짧으면 ${taskCriterion}에 반영한다. 다만 단어 수만으로 점수를 높게 주지 말고 내용의 질과 정확성을 우선한다.\n4. Coherence & Cohesion, Lexical Resource, Grammatical Range & Accuracy를 각각 독립적으로 평가한다. 힌트 감점은 서버가 별도로 처리하므로 여기서는 감점하지 않는다.\n5. rawScore는 아래 4개 기준 점수의 산술평균을 반올림해 작성한다.\n\n반드시 {\"rawScore\":0,\"resultLabel\":\"pass|partial|needs_practice\",\"errorCount\":0,\"criteria\":{\"taskAchievementOrResponse\":0,\"taskAchievementOrResponseEvidence\":\"\",\"coherenceCohesion\":0,\"coherenceCohesionEvidence\":\"\",\"lexicalResource\":0,\"lexicalResourceEvidence\":\"\",\"grammaticalRangeAccuracy\":0,\"grammaticalRangeAccuracyEvidence\":\"\"},\"feedback\":{\"correctedAnswer\":\"\",\"errors\":[{\"original\":\"\",\"correction\":\"\",\"reason\":\"\"}],\"synonyms\":[\"\"],\"usefulExpressions\":[\"\"],\"improvedAnswer\":\"\",\"keyLearning\":\"\",\"nextFocus\":\"\"},\"skills\":[{\"code\":\"\",\"qualityScore\":0,\"evidenceSummary\":\"\"}]} 형식으로 반환하세요.`;
     const evaluation = jsonObject((await codex.get(user.id).runLearningPrompt(prompt)).text);
     const criteria = criterionRows(evaluation, task);
     const rawScore = Math.round(criteria.reduce((sum, criterion) => sum + criterion.score, 0) / criteria.length);
