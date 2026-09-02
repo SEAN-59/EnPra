@@ -1,11 +1,10 @@
 type WritingSubnavProps = {
-  activeItem: 'BOARD' | 'LEARNING' | 'TEST' | 'NOTEBOOK';
+  activeItem: 'BOARD' | 'PRACTICE' | 'NOTEBOOK';
 };
 
 const items: Array<{ label: WritingSubnavProps['activeItem']; href: string }> = [
   { label: 'BOARD', href: '/writing' },
-  { label: 'LEARNING', href: '/writing/learning' },
-  { label: 'TEST', href: '/writing/test' },
+  { label: 'PRACTICE', href: '/writing/practice' },
   { label: '오답노트', href: '/writing/notebook' },
 ];
 

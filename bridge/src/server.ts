@@ -7,6 +7,7 @@ import { cors } from 'hono/cors';
 import { Pool } from 'pg';
 
 import { CodexRegistry } from './codex.js';
+import { initializeWritingDatabase, registerWritingRoutes } from './writing.js';
 
 type UserContext = { id: string; displayName: string };
 type Variables = { user: UserContext };
@@ -180,6 +181,7 @@ async function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS user_vocabulary_list_subscriptions_visible_idx
       ON user_vocabulary_list_subscriptions (user_id, is_enabled, updated_at DESC);
   `);
+  await initializeWritingDatabase(pool);
 }
 
 function serializeVocabularyList(row: VocabularyListRow) {
@@ -282,6 +284,8 @@ app.use('/api/*', async (c, next) => {
   c.set('user', user);
   await next();
 });
+
+registerWritingRoutes(app, pool, codex);
 
 app.get('/api/me', async (c) => {
   const user = c.get('user');

@@ -1,6 +1,6 @@
 import { chatGPTSignOutPath, requireChatGPTUser } from '@/app/chatgpt-auth';
 import { AppShell } from '@/components/app-shell';
-import { WritingBoard } from '@/components/writing-board';
+import { WritingBoardClient } from '@/components/writing-client';
 import { WritingHeader } from '@/components/writing-header';
 import { WritingSubnav } from '@/components/writing-subnav';
 
@@ -11,7 +11,7 @@ export default async function WritingPage() {
 
   return (
     <AppShell activeSection="WRITING" displayName={user.displayName} signOutHref={chatGPTSignOutPath('/writing')}>
-      <section className="min-w-0"><WritingHeader /><div className="mt-9"><WritingSubnav activeItem="BOARD" /></div><WritingBoard /></section>
+      <section className="min-w-0"><WritingHeader /><div className="mt-9"><WritingSubnav activeItem="BOARD" /></div><WritingBoardClient /></section>
     </AppShell>
   );
 }
