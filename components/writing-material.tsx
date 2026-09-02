@@ -89,13 +89,17 @@ function ChartFrame({
   unit?: unknown;
 }) {
   return (
-    <div className="mt-5 h-72 rounded-2xl border border-[#ece5da] bg-[#fbf9f4] p-3 sm:p-5">
-      <ResponsiveContainer width="100%" height="100%">
-        {children}
-      </ResponsiveContainer>
+    <div className="mt-5 overflow-hidden rounded-2xl border border-[#ece5da] bg-[#fbf9f4] p-3 sm:p-5">
+      <div className="h-56 sm:h-60">
+        <ResponsiveContainer width="100%" height="100%">
+          {children}
+        </ResponsiveContainer>
+      </div>
       {unit && (
-        <p className="mt-1 text-right text-xs text-[#8a756b]">
-          단위: {String(unit)}
+        <p className="mt-2 text-right text-xs text-[#8a756b]">
+          <span className="inline-flex rounded-full bg-[#f2ede4] px-2.5 py-1">
+            단위: {String(unit)}
+          </span>
         </p>
       )}
     </div>
@@ -298,7 +302,7 @@ export function WritingMaterial({
             <XAxis dataKey="label" tick={{ fill: '#69736e', fontSize: 12 }} />
             <YAxis tick={{ fill: '#69736e', fontSize: 12 }} />
             <Tooltip />
-            <Legend />
+            <Legend verticalAlign="bottom" height={32} />
             {series.keys.map((entry, index) => (
               <Bar
                 key={entry.key}
@@ -319,7 +323,7 @@ export function WritingMaterial({
             <XAxis dataKey="label" tick={{ fill: '#69736e', fontSize: 12 }} />
             <YAxis tick={{ fill: '#69736e', fontSize: 12 }} />
             <Tooltip />
-            <Legend />
+            <Legend verticalAlign="bottom" height={32} />
             {series.keys.map((entry, index) => (
               <Line
                 key={entry.key}
@@ -339,7 +343,7 @@ export function WritingMaterial({
         <ChartFrame unit={material.unit}>
           <PieChart>
             <Tooltip />
-            <Legend />
+            <Legend verticalAlign="bottom" height={54} />
             <Pie
               data={rows.map((row) => ({
                 name: row.label,
@@ -348,9 +352,8 @@ export function WritingMaterial({
               dataKey="value"
               nameKey="name"
               cx="50%"
-              cy="50%"
-              outerRadius="78%"
-              label
+              cy="42%"
+              outerRadius="58%"
             >
               {rows.map((_, index) => (
                 <Cell key={index} fill={palette[index % palette.length]} />
