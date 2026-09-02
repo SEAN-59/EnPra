@@ -1203,8 +1203,8 @@ export function WritingNotebookClient() {
                   {materialOpened === entry.id && (
                     <div className="mt-3 rounded-2xl border border-[#e5ddd1] bg-[#fbf9f4] p-3 sm:p-4">
                       <WritingMaterial
+                        format={entry.questionFormat}
                         material={entry.material}
-                        title={entry.title}
                       />
                     </div>
                   )}
