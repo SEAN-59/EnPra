@@ -532,6 +532,15 @@ export function WritingMaterial({
   const series = seriesData(material);
   const mapPanels = mapPanelsFrom(material);
   const steps = stepsFrom(material);
+  const resolvedFormat =
+    format ??
+    (mapPanels.length
+      ? 'map'
+      : steps.length
+        ? 'diagram'
+        : series
+          ? 'bar_chart'
+          : 'table');
   const title = label(material.title, '자료');
   const formatLabel: Record<string, string> = {
     bar_chart: 'Bar chart',
@@ -542,7 +551,7 @@ export function WritingMaterial({
     diagram: 'Process diagram',
   };
   const content = (() => {
-    if (format === 'bar_chart' && series)
+    if (resolvedFormat === 'bar_chart' && series)
       return (
         <ChartFrame unit={material.unit}>
           <BarChart data={series.data}>
@@ -563,7 +572,7 @@ export function WritingMaterial({
           </BarChart>
         </ChartFrame>
       );
-    if (format === 'line_chart' && series)
+    if (resolvedFormat === 'line_chart' && series)
       return (
         <ChartFrame unit={material.unit}>
           <LineChart data={series.data}>
@@ -586,7 +595,7 @@ export function WritingMaterial({
           </LineChart>
         </ChartFrame>
       );
-    if (format === 'pie_chart' && rows.length)
+    if (resolvedFormat === 'pie_chart' && rows.length)
       return (
         <ChartFrame unit={material.unit}>
           <PieChart>
@@ -610,13 +619,13 @@ export function WritingMaterial({
           </PieChart>
         </ChartFrame>
       );
-    if (format === 'map')
+    if (resolvedFormat === 'map')
       return mapPanels.length ? (
         <MapPanels panels={mapPanels} />
       ) : (
         <DataTable rows={rows} />
       );
-    if (format === 'diagram')
+    if (resolvedFormat === 'diagram')
       return steps.length ? (
         <ProcessDiagram steps={steps} />
       ) : (
@@ -634,7 +643,7 @@ export function WritingMaterial({
           <h3 className="mt-1 font-serif text-2xl text-[#24333a]">{title}</h3>
         </div>
         <span className="rounded-full bg-[#eef5f0] px-3 py-1 text-xs font-bold text-[#38634f]">
-          {formatLabel[format ?? ''] ?? 'Data'}
+          {formatLabel[resolvedFormat] ?? 'Data'}
         </span>
       </div>
       {material.description && (
