@@ -51,6 +51,7 @@ export async function POST(request: NextRequest) {
   if (action === 'apply-promotion' && Number.isSafeInteger(body.sessionId)) return forward(`/api/writing/sessions/${body.sessionId}/apply-promotion`, 'POST', request, payload);
   if (action === 'level-change') return forward('/api/writing/level-change', 'POST', request, payload);
   if (action === 'review-notebook') return forward('/api/writing/notebook/review', 'POST', request, payload);
+  if (action === 'reset-progress') return forward('/api/writing/reset-progress', 'POST', request, payload);
   if (action === 'reveal-hint' && Number.isSafeInteger(body.sessionId) && Number.isSafeInteger(body.itemId) && Number.isSafeInteger(body.hintId)) return forward(`/api/writing/sessions/${body.sessionId}/items/${body.itemId}/hints/${body.hintId}`, 'POST', request, payload);
   if (action === 'use-structure-guide' && Number.isSafeInteger(body.sessionId) && Number.isSafeInteger(body.itemId)) return forward(`/api/writing/sessions/${body.sessionId}/items/${body.itemId}/structure-guide`, 'POST', request, payload);
   if (action === 'submit' && Number.isSafeInteger(body.sessionId) && Number.isSafeInteger(body.itemId)) return forward(`/api/writing/sessions/${body.sessionId}/items/${body.itemId}/submit`, 'POST', request, payload);

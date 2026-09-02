@@ -1258,6 +1258,36 @@ export function registerWritingRoutes(
   pool: Pool,
   codex: CodexRegistry,
 ) {
+  app.post('/api/writing/reset-progress', async (c) => {
+    const user = c.get('user');
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        `DELETE FROM writing_level_change_history WHERE user_id = $1`,
+        [user.id],
+      );
+      await client.query(
+        `DELETE FROM user_writing_skill_states WHERE user_id = $1`,
+        [user.id],
+      );
+      await client.query(`DELETE FROM writing_sessions WHERE user_id = $1`, [
+        user.id,
+      ]);
+      await client.query(
+        `DELETE FROM user_writing_profiles WHERE user_id = $1`,
+        [user.id],
+      );
+      await client.query('COMMIT');
+      return c.json({ reset: true });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  });
+
   app.get('/api/writing/overview', async (c) =>
     c.json(await publicOverview(pool, c.get('user').id)),
   );
