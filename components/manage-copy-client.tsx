@@ -1,6 +1,6 @@
 'use client';
 
-import { ArchiveRestore, ChevronDown, FilePlus2, LayoutPanelTop, LoaderCircle, Pencil, Save, Send, SlidersHorizontal, X } from 'lucide-react';
+import { ArchiveRestore, ChevronDown, ChevronLeft, ChevronRight, FilePlus2, LayoutPanelTop, LoaderCircle, Pencil, Save, Send, SlidersHorizontal, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from '@/components/ui/toast';
 import { useStaticCopy } from '@/components/static-copy-provider';
@@ -12,6 +12,7 @@ type Payload = { screens: Screen[]; entries: Entry[]; publications: Publication[
 
 const blankScreen = { screenKey: '', displayName: '', routePath: '', sortOrder: '0' };
 const blankEntry = { screenId: '', variableName: '', locale: 'ko', description: '', draftText: '', templateVariables: '', maxLength: '' };
+const DRAFTS_PER_PAGE = 15;
 const inputClass = 'h-9 w-full rounded-lg border border-[#d8d1c5] bg-white px-2.5 text-sm text-[#344247] outline-none focus:border-[#cf7355] focus:ring-2 focus:ring-[#f3d7ca]';
 const errorText = (body: unknown, fallback: string) => body && typeof body === 'object' && 'error' in body && typeof body.error === 'string' ? body.error : fallback;
 const dateText = (value: string | null) => value ? new Intl.DateTimeFormat('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value)) : '아직 없음';
@@ -36,6 +37,7 @@ export function ManageCopyClient() {
   const [entryDraft, setEntryDraft] = useState(blankEntry);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [draftScreenFilter, setDraftScreenFilter] = useState('all');
+  const [draftPage, setDraftPage] = useState(1);
   const copyTitle = useStaticCopy('manage.copy', 'title', '서비스 문구 관리');
   const copyDescription = useStaticCopy('manage.copy', 'description', '문구는 소속 화면 아래에서 관리합니다.');
   const draftScreenFilterLabel = useStaticCopy('manage.copy', 'draft_screen_filter_label', '소속 화면');
@@ -43,6 +45,9 @@ export function ManageCopyClient() {
   const draftScreenFilterCount = useStaticCopy('manage.copy', 'draft_screen_filter_count', '{count}개 문구 표시');
   const draftScreenFilterEmptyTitle = useStaticCopy('manage.copy', 'draft_screen_filter_empty_title', '이 화면에 등록된 문구가 없습니다.');
   const draftScreenFilterEmptyDescription = useStaticCopy('manage.copy', 'draft_screen_filter_empty_description', '다른 소속 화면을 선택하거나 새 문구를 등록하세요.');
+  const draftPaginationPrevious = useStaticCopy('manage.copy', 'draft_pagination_previous', '이전');
+  const draftPaginationNext = useStaticCopy('manage.copy', 'draft_pagination_next', '다음');
+  const draftPaginationStatus = useStaticCopy('manage.copy', 'draft_pagination_status', '{current} / {total} 페이지');
   const activeCount = entries.filter((entry) => entry.isActive).length;
   const latest = publications[0];
   const unpublishedCount = unpublishedEntryIds.size;
@@ -51,6 +56,13 @@ export function ManageCopyClient() {
     () => draftScreenFilter === 'all' ? entries : entries.filter((entry) => entry.screenId === Number(draftScreenFilter)),
     [draftScreenFilter, entries],
   );
+  const totalDraftPages = Math.max(1, Math.ceil(filteredEntries.length / DRAFTS_PER_PAGE));
+  const currentDraftPage = Math.min(draftPage, totalDraftPages);
+  const paginatedEntries = useMemo(
+    () => filteredEntries.slice((currentDraftPage - 1) * DRAFTS_PER_PAGE, currentDraftPage * DRAFTS_PER_PAGE),
+    [currentDraftPage, filteredEntries],
+  );
+  useEffect(() => { setDraftPage(1); }, [draftScreenFilter]);
 
   async function load(showError = true) {
     setLoading(true);
@@ -160,7 +172,7 @@ export function ManageCopyClient() {
       {entryOpen && <CreateEntry draft={entryDraft} screens={orderedScreens} onChange={setEntryDraft} onCancel={() => { setEntryOpen(false); setEntryDraft(blankEntry); }} onSubmit={() => void createEntry()} />}
       <div className="mt-5 flex flex-col gap-3 rounded-2xl border border-[#e7dfd2] bg-[#faf7f0] p-3 sm:flex-row sm:items-center sm:justify-between"><label className="flex min-w-0 items-center gap-3 text-sm font-semibold text-[#43514e]"><span className="shrink-0">{draftScreenFilterLabel}</span><select value={draftScreenFilter} onChange={(event) => setDraftScreenFilter(event.target.value)} className="h-10 min-w-0 rounded-xl border border-[#d8d1c5] bg-white px-3 text-sm font-medium text-[#344247] outline-none focus:border-[#cf7355] focus:ring-2 focus:ring-[#f3d7ca]"><option value="all">{draftScreenFilterAll}</option>{orderedScreens.map((screen) => <option key={screen.id} value={screen.id}>{screen.displayName}</option>)}</select></label><span className="text-xs text-[#78817b]">{draftScreenFilterCount.replace('{count}', String(filteredEntries.length))}</span></div>
       <div className="mt-3 flex flex-wrap items-center gap-2 rounded-2xl border border-[#e7dfd2] bg-[#faf7f0] px-3 py-2.5 text-xs"><span className="font-semibold text-[#66716d]">현재 상태</span>{entryDirty.size > 0 && <DraftBadge tone="warning">저장 전 변경 {entryDirty.size}건</DraftBadge>}{unpublishedCount > 0 && <DraftBadge tone="pending">수정됨 {unpublishedCount}건</DraftBadge>}{entryDirty.size === 0 && unpublishedCount === 0 && <DraftBadge tone="published">{latest ? `발행본 v${latest.version} 반영됨` : '발행할 문구가 없습니다'}</DraftBadge>}<span className="text-[#858c85]">저장 전 → 수정됨 → 반영 완료 순서로 관리돼요.</span></div>
-      {!entries.length ? <div className="mt-5 rounded-2xl border border-dashed border-[#d8d0c2] px-5 py-12 text-center"><SlidersHorizontal className="mx-auto size-5 text-[#9ba39d]" /><p className="mt-3 font-medium text-[#43514e]">아직 등록된 문구가 없습니다.</p><p className="mt-1 text-sm text-[#77807a]">소속 화면을 선택하고 title 같은 변수명으로 문구를 등록하세요.</p></div> : filteredEntries.length ? <EntryTable entries={filteredEntries} screens={orderedScreens} editing={entryEditing} dirtyEntryIds={entryDirty} unpublishedEntryIds={unpublishedEntryIds} latestVersion={latest?.version ?? null} onChange={patchEntry} /> : <div className="mt-5 rounded-2xl border border-dashed border-[#d8d0c2] px-5 py-12 text-center"><SlidersHorizontal className="mx-auto size-5 text-[#9ba39d]" /><p className="mt-3 font-medium text-[#43514e]">{draftScreenFilterEmptyTitle}</p><p className="mt-1 text-sm text-[#77807a]">{draftScreenFilterEmptyDescription}</p></div>}</section>
+      {!entries.length ? <div className="mt-5 rounded-2xl border border-dashed border-[#d8d0c2] px-5 py-12 text-center"><SlidersHorizontal className="mx-auto size-5 text-[#9ba39d]" /><p className="mt-3 font-medium text-[#43514e]">아직 등록된 문구가 없습니다.</p><p className="mt-1 text-sm text-[#77807a]">소속 화면을 선택하고 title 같은 변수명으로 문구를 등록하세요.</p></div> : filteredEntries.length ? <><EntryTable entries={paginatedEntries} screens={orderedScreens} editing={entryEditing} dirtyEntryIds={entryDirty} unpublishedEntryIds={unpublishedEntryIds} latestVersion={latest?.version ?? null} onChange={patchEntry} /><nav aria-label="문구 초안 페이지" className="mt-4 flex items-center justify-end gap-2"><button type="button" onClick={() => setDraftPage((page) => Math.max(1, page - 1))} disabled={currentDraftPage === 1} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#d8d1c5] px-3 text-xs font-semibold text-[#4c5a56] disabled:cursor-not-allowed disabled:opacity-40"><ChevronLeft className="size-3.5" />{draftPaginationPrevious}</button><span className="min-w-24 text-center text-xs font-semibold text-[#69736e]">{draftPaginationStatus.replace('{current}', String(currentDraftPage)).replace('{total}', String(totalDraftPages))}</span><button type="button" onClick={() => setDraftPage((page) => Math.min(totalDraftPages, page + 1))} disabled={currentDraftPage === totalDraftPages} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#d8d1c5] px-3 text-xs font-semibold text-[#4c5a56] disabled:cursor-not-allowed disabled:opacity-40">{draftPaginationNext}<ChevronRight className="size-3.5" /></button></nav></> : <div className="mt-5 rounded-2xl border border-dashed border-[#d8d0c2] px-5 py-12 text-center"><SlidersHorizontal className="mx-auto size-5 text-[#9ba39d]" /><p className="mt-3 font-medium text-[#43514e]">{draftScreenFilterEmptyTitle}</p><p className="mt-1 text-sm text-[#77807a]">{draftScreenFilterEmptyDescription}</p></div>}</section>
 
     <section className="rounded-3xl border border-[#dcd6ca] bg-[#fffdf8] p-5 sm:p-7"><div role="button" tabIndex={0} onClick={() => setHistoryOpen((v) => !v)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setHistoryOpen((v) => !v); } }} aria-expanded={historyOpen} className="flex w-full cursor-pointer items-center justify-between text-left"><span><span className="block text-xs font-bold tracking-[0.16em] text-[#d76a47]">RELEASE HISTORY</span><span className="mt-1 block font-serif text-2xl text-[#26353b]">발행본 이력</span></span><ChevronDown className={`size-5 text-[#566560] transition-transform ${historyOpen ? 'rotate-180' : ''}`} /></div>{historyOpen && <div className="mt-5 space-y-3 border-t border-[#ece7dd] pt-5">{!publications.length ? <p className="text-sm text-[#77807a]">아직 만든 발행본이 없습니다.</p> : publications.map((item) => <article key={item.id} className="flex flex-col gap-3 rounded-2xl border border-[#e3ddd2] p-4 sm:flex-row sm:items-center sm:justify-between"><div><div className="flex items-center gap-2"><strong className="font-serif text-xl">v{item.version}</strong><span className="rounded-full bg-[#e9f3ed] px-2 py-0.5 text-[11px] font-bold text-[#3f7158]">{item.status === 'published' ? '사이트 반영 완료' : item.status === 'ready' ? '발행본 생성됨' : item.status === 'failed' ? '생성 실패' : item.status}</span></div><p className="mt-1 text-xs text-[#747c76]">{item.copyCount}개 문구 · {dateText(item.publishedAt ?? item.createdAt)}{item.restoredFromPublicationId ? ` · v${item.restoredFromPublicationId}에서 복원` : ''}</p></div><button type="button" onClick={() => void publish(item.id)} disabled={publishing} className="inline-flex h-9 items-center gap-2 rounded-xl border border-[#d9d2c6] px-3 text-xs font-semibold text-[#43514e] disabled:opacity-45"><ArchiveRestore className="size-3.5" />이 버전으로 되돌리기</button></article>)}</div>}</section>
   </section>;

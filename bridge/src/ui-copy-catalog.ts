@@ -4871,5 +4871,29 @@ export const UI_COPY_ENTRIES: UiCopyEntrySeed[] = [
     "draftText": "다른 소속 화면을 선택하거나 새 문구를 등록하세요.",
     "description": "components/manage-copy-client.tsx 선택한 화면에 문구가 없을 때 안내",
     "textFormat": "plain"
+  },
+  {
+    "screenKey": "manage.copy",
+    "variableName": "draft_pagination_previous",
+    "sourceText": "이전",
+    "draftText": "이전",
+    "description": "components/manage-copy-client.tsx 문구 초안 목록 페이지네이션의 이전 버튼",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "manage.copy",
+    "variableName": "draft_pagination_next",
+    "sourceText": "다음",
+    "draftText": "다음",
+    "description": "components/manage-copy-client.tsx 문구 초안 목록 페이지네이션의 다음 버튼",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "manage.copy",
+    "variableName": "draft_pagination_status",
+    "sourceText": "{current} / {total} 페이지",
+    "draftText": "{current} / {total} 페이지",
+    "description": "components/manage-copy-client.tsx 문구 초안 목록의 현재 페이지 표시",
+    "textFormat": "plain"
   }
 ];
