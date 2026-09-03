@@ -4895,5 +4895,13 @@ export const UI_COPY_ENTRIES: UiCopyEntrySeed[] = [
     "draftText": "{current} / {total} 페이지",
     "description": "components/manage-copy-client.tsx 문구 초안 목록의 현재 페이지 표시",
     "textFormat": "plain"
+  },
+  {
+    "screenKey": "manage.copy",
+    "variableName": "screen_pagination_label",
+    "sourceText": "소속 화면 페이지",
+    "draftText": "소속 화면 페이지",
+    "description": "components/manage-copy-client.tsx 소속 화면 목록 페이지네이션의 접근성 이름",
+    "textFormat": "plain"
   }
 ];
