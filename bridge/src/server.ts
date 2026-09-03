@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { Pool } from 'pg';
+import { Pool, type QueryResult } from 'pg';
 
 import { CodexRegistry } from './codex.js';
 import { initializeWritingDatabase, registerWritingRoutes } from './writing.js';
@@ -800,9 +800,30 @@ app.post('/api/admin/copy', async (c) => {
     }
   }
 
+  if (action === 'update-screen') {
+    const screenId = Number(body.screenId);
+    const displayName = typeof body.displayName === 'string' ? body.displayName.trim() : '';
+    const routePath = typeof body.routePath === 'string' ? body.routePath.trim() : '';
+    const sortOrder = body.sortOrder === undefined || body.sortOrder === '' ? 0 : Number(body.sortOrder);
+    const isActive = typeof body.isActive === 'boolean' ? body.isActive : null;
+    if (!Number.isSafeInteger(screenId) || screenId < 1 || !displayName || displayName.length > 120 || (routePath && (!routePath.startsWith('/') || routePath.length > 300)) || !Number.isSafeInteger(sortOrder) || sortOrder < -10_000 || sortOrder > 10_000 || isActive === null) {
+      return c.json({ error: '화면명, 경로, 정렬 순서와 활성 상태를 확인해 주세요.' }, 400);
+    }
+    const updated = await pool.query<UiCopyScreenRow>(
+      `UPDATE ui_copy_screens
+       SET display_name = $2, route_path = $3, sort_order = $4, is_active = $5, updated_at = NOW()
+       WHERE id = $1
+       RETURNING id, screen_key, display_name, route_path, sort_order, is_active, created_at`,
+      [screenId, displayName, routePath || null, sortOrder, isActive],
+    );
+    if (!updated.rowCount) return c.json({ error: '소속 화면을 찾을 수 없습니다.' }, 404);
+    return c.json({ screen: serializeUiCopyScreen(updated.rows[0]) });
+  }
+
   if (action === 'update-entry') {
     const entryId = Number(body.entryId);
     const draftRevision = Number(body.draftRevision);
+    const variableName = typeof body.variableName === 'string' ? body.variableName.trim() : '';
     const draftText = typeof body.draftText === 'string' ? body.draftText.trim() : '';
     const description = typeof body.description === 'string' ? body.description.trim() : '';
     const screenId = Number(body.screenId);
@@ -811,21 +832,28 @@ app.post('/api/admin/copy', async (c) => {
     const templateVariables = parseTemplateVariables(body.templateVariables ?? []);
     const maxLength = body.maxLength === null || body.maxLength === undefined || body.maxLength === '' ? null : Number(body.maxLength);
     const isActive = typeof body.isActive === 'boolean' ? body.isActive : null;
-    if (!Number.isSafeInteger(entryId) || entryId < 1 || !Number.isSafeInteger(screenId) || screenId < 1 || !Number.isSafeInteger(draftRevision) || draftRevision < 1 || !/^[a-z]{2}(?:-[A-Z]{2})?$/.test(locale) || description.length > 500 || !textFormat || !draftText || draftText.length > 5000 || templateVariables === null || isActive === null || (maxLength !== null && (!Number.isSafeInteger(maxLength) || maxLength < 1 || maxLength > 5000)) || (maxLength !== null && draftText.length > maxLength)) {
+    if (!Number.isSafeInteger(entryId) || entryId < 1 || !Number.isSafeInteger(screenId) || screenId < 1 || !Number.isSafeInteger(draftRevision) || draftRevision < 1 || !isVariableName(variableName) || variableName.length > 80 || !/^[a-z]{2}(?:-[A-Z]{2})?$/.test(locale) || description.length > 500 || !textFormat || !draftText || draftText.length > 5000 || templateVariables === null || isActive === null || (maxLength !== null && (!Number.isSafeInteger(maxLength) || maxLength < 1 || maxLength > 5000)) || (maxLength !== null && draftText.length > maxLength)) {
       return c.json({ error: '문구의 내용과 설정값을 확인해 주세요.' }, 400);
     }
-    const updated = await pool.query<UiCopyEntryRow>(
+    let updated: QueryResult<UiCopyEntryRow>;
+    try {
+      updated = await pool.query<UiCopyEntryRow>(
       `UPDATE ui_copy_entries
-       SET screen_id = $2, locale = $3, description = $4, text_format = $5,
-           draft_text = $6, template_variables = $7, max_length = $8,
-           is_active = $9, draft_revision = draft_revision + 1,
-           draft_updated_by_user_id = $10, draft_updated_at = NOW(), updated_at = NOW()
-       WHERE id = $1 AND draft_revision = $11
+       SET screen_id = $2, variable_name = $3, locale = $4, description = $5, text_format = $6,
+           draft_text = $7, template_variables = $8, max_length = $9,
+           is_active = $10, draft_revision = draft_revision + 1,
+           draft_updated_by_user_id = $11, draft_updated_at = NOW(), updated_at = NOW()
+       WHERE id = $1 AND draft_revision = $12
        RETURNING id, screen_id, variable_name, locale, description, text_format, draft_text,
                  template_variables, max_length, draft_revision, is_active,
                  draft_updated_at, created_at`,
-      [entryId, screenId, locale, description || null, textFormat, draftText, JSON.stringify(templateVariables), maxLength, isActive, user.id, draftRevision],
-    );
+      [entryId, screenId, variableName, locale, description || null, textFormat, draftText, JSON.stringify(templateVariables), maxLength, isActive, user.id, draftRevision],
+      );
+    } catch (error) {
+      if ((error as { code?: string }).code === '23505') return c.json({ error: '이 화면에서 이미 사용 중인 변수명입니다.' }, 409);
+      if ((error as { code?: string }).code === '23503') return c.json({ error: '소속 화면을 찾을 수 없습니다.' }, 404);
+      throw error;
+    }
     if (!updated.rowCount) {
       const existing = await pool.query('SELECT 1 FROM ui_copy_entries WHERE id = $1', [entryId]);
       return c.json({ error: existing.rowCount ? '다른 관리자가 먼저 수정했습니다. 새로고침 후 다시 저장해 주세요.' : '문구를 찾을 수 없습니다.' }, existing.rowCount ? 409 : 404);
