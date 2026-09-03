@@ -16,7 +16,7 @@ import {
   Waves,
   X,
 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { useDocumentScrollLock } from '@/components/use-document-scroll-lock';
@@ -163,7 +163,6 @@ export function SpeakingPartOnePrototype() {
   const [resultTurnIndex, setResultTurnIndex] = useState<number | null>(null);
   const [audioSeconds, setAudioSeconds] = useState(0);
   const [questionPlaying, setQuestionPlaying] = useState(false);
-  const conversationEndRef = useRef<HTMLDivElement>(null);
 
   const currentTurn = turns[turnIndex];
   const spokenMinutes = Math.min(10 * 60 + 30, 162 + turnIndex * 94 + (stage === 'recorded' || stage === 'processing' || stage === 'feedback' ? 42 : 0));
@@ -183,8 +182,16 @@ export function SpeakingPartOnePrototype() {
 
   useEffect(() => {
     if (stage === 'ready' || stage === 'finished' || stage === 'countdown') return;
-    const frame = window.requestAnimationFrame(() => conversationEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }));
-    return () => window.cancelAnimationFrame(frame);
+    const timer = window.setTimeout(() => {
+      const main = document.querySelector('main');
+      if (main instanceof HTMLElement && main.scrollHeight > main.clientHeight) {
+        main.scrollTo({ top: main.scrollHeight, behavior: 'smooth' });
+        return;
+      }
+      const page = document.scrollingElement;
+      page?.scrollTo({ top: page.scrollHeight, behavior: 'smooth' });
+    }, 80);
+    return () => window.clearTimeout(timer);
   }, [stage, turnIndex]);
 
   useEffect(() => {
@@ -274,7 +281,6 @@ export function SpeakingPartOnePrototype() {
 
               {stage === 'processing' && <div className="mx-auto flex w-fit items-center gap-2 rounded-full border border-[#eadbcd] bg-[#fffdf8] px-4 py-2 text-sm font-semibold text-[#7b6357]"><Sparkles className="size-4 animate-pulse text-[#d76a47]" />답변을 정리하고 있어요.</div>}
               {stage === 'feedback' && <div className="mx-auto flex w-fit items-center gap-2 rounded-full border border-[#d7e5db] bg-[#eff7f1] px-4 py-2 text-sm font-semibold text-[#38634f]"><Check className="size-4" />다음 질문을 준비했어요.</div>}
-              <div ref={conversationEndRef} aria-hidden="true" />
             </div>
           </div>
         )}
