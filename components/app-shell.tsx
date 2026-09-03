@@ -5,9 +5,10 @@ import { ArrowUpRight, BookOpen, Headphones, LogOut, Menu, Mic, PenLine, SpellCh
 import { useState, type ReactNode } from 'react';
 
 import { AIConnectionStatus } from '@/components/ai-connection-status';
+import { AdminNavigationLink } from '@/components/admin-navigation-link';
 import { useDocumentScrollLock } from '@/components/use-document-scroll-lock';
 
-type AppSection = 'HOME' | 'VOCA' | 'READING' | 'LISTENING' | 'WRITING' | 'SPEAKING';
+type AppSection = 'HOME' | 'VOCA' | 'READING' | 'LISTENING' | 'WRITING' | 'SPEAKING' | 'ADMIN';
 
 type AppShellProps = {
   activeSection: AppSection;
@@ -32,6 +33,7 @@ function NavigationLinks({ activeSection, closeMenu }: { activeSection: AppSecti
         const active = label === activeSection;
         return <a key={label} onClick={closeMenu} className={active ? 'flex items-center gap-3 rounded-lg bg-[#e9e5dc] px-3 py-2.5 text-sm font-semibold' : 'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-[#66706d] hover:bg-[#ebe7dd]'} href={href}><Icon className={active ? 'size-4 text-[#e9784f]' : 'size-4'} aria-hidden="true" />{label}</a>;
       })}
+      <AdminNavigationLink active={activeSection === 'ADMIN'} closeMenu={closeMenu} />
     </>
   );
 }

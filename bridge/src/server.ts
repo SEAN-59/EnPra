@@ -40,6 +40,12 @@ const port = Number(process.env.PORT ?? 8787);
 const dataDir = process.env.ENPRA_DATA_DIR ?? join(process.cwd(), '.enpra-data');
 const databaseUrl = process.env.DATABASE_URL;
 const serviceToken = process.env.ENPRA_BRIDGE_SERVICE_TOKEN;
+const configuredAdminUserIds = new Set(
+  (process.env.ENPRA_ADMIN_USER_IDS ?? '')
+    .split(',')
+    .map((userId) => userId.trim())
+    .filter(Boolean),
+);
 const corsOrigins = (process.env.ENPRA_CORS_ORIGIN ?? 'http://localhost:3000')
   .split(',')
   .map((origin) => origin.trim())
@@ -65,9 +71,14 @@ async function initializeDatabase() {
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       display_name TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'admin')),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+
+    ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user'
+      CHECK (role IN ('user', 'admin'));
 
     CREATE TABLE IF NOT EXISTS connections (
       id TEXT PRIMARY KEY,
@@ -217,12 +228,15 @@ async function getAccessibleVocabularyList(userId: string, listId: number) {
 }
 
 async function upsertUser(user: UserContext) {
+  const isConfiguredAdmin = configuredAdminUserIds.has(user.id);
   await pool.query(
-    `INSERT INTO users (id, display_name)
-     VALUES ($1, $2)
+    `INSERT INTO users (id, display_name, role)
+     VALUES ($1, $2, CASE WHEN $3 THEN 'admin' ELSE 'user' END)
      ON CONFLICT (id) DO UPDATE
-     SET display_name = EXCLUDED.display_name, updated_at = NOW()`,
-    [user.id, user.displayName],
+     SET display_name = EXCLUDED.display_name,
+         role = CASE WHEN $3 THEN 'admin' ELSE users.role END,
+         updated_at = NOW()`,
+    [user.id, user.displayName, isConfiguredAdmin],
   );
 }
 
@@ -296,6 +310,16 @@ app.get('/api/me', async (c) => {
     [user.id],
   );
   return c.json({ user, connection: result.rows[0] ?? null });
+});
+
+app.get('/api/admin/access', async (c) => {
+  const user = c.get('user');
+  const result = await pool.query<{ role: 'user' | 'admin' }>(
+    'SELECT role FROM users WHERE id = $1',
+    [user.id],
+  );
+  const role = result.rows[0]?.role === 'admin' ? 'admin' : 'user';
+  return c.json({ role, isAdmin: role === 'admin' });
 });
 
 app.get('/api/vocabulary/lists', async (c) => {
