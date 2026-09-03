@@ -1663,7 +1663,7 @@ export function registerWritingRoutes(
             sessionId,
             question.id,
             index + 1,
-            questionTask === 'foundation' ? null : questionTask,
+            questionTask,
             questionExercise,
             entry.purpose,
             hintSetId,
