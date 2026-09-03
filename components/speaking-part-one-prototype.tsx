@@ -16,7 +16,7 @@ import {
   Waves,
   X,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { useDocumentScrollLock } from '@/components/use-document-scroll-lock';
@@ -162,17 +162,30 @@ export function SpeakingPartOnePrototype() {
   const [selectedHint, setSelectedHint] = useState<'text' | 'structure' | null>(null);
   const [resultTurnIndex, setResultTurnIndex] = useState<number | null>(null);
   const [audioSeconds, setAudioSeconds] = useState(0);
+  const [questionPlaying, setQuestionPlaying] = useState(false);
+  const conversationEndRef = useRef<HTMLDivElement>(null);
 
   const currentTurn = turns[turnIndex];
   const spokenMinutes = Math.min(10 * 60 + 30, 162 + turnIndex * 94 + (stage === 'recorded' || stage === 'processing' || stage === 'feedback' ? 42 : 0));
   const spokenTime = `${String(Math.floor(spokenMinutes / 60)).padStart(2, '0')}:${String(spokenMinutes % 60).padStart(2, '0')}`;
-  const replayPenalty = Math.min(replays, 4) * 5;
 
   useEffect(() => {
     if (stage !== 'recording') return;
     const timer = window.setInterval(() => setAudioSeconds((current) => current + 1), 1_000);
     return () => window.clearInterval(timer);
   }, [stage]);
+
+  useEffect(() => {
+    if (!questionPlaying) return;
+    const timer = window.setTimeout(() => setQuestionPlaying(false), 1_700);
+    return () => window.clearTimeout(timer);
+  }, [questionPlaying]);
+
+  useEffect(() => {
+    if (stage === 'ready' || stage === 'finished' || stage === 'countdown') return;
+    const frame = window.requestAnimationFrame(() => conversationEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }));
+    return () => window.cancelAnimationFrame(frame);
+  }, [stage, turnIndex]);
 
   useEffect(() => {
     if (stage !== 'feedback') return;
@@ -200,6 +213,7 @@ export function SpeakingPartOnePrototype() {
     setReplays(0);
     setHintOpen(false);
     setSelectedHint(null);
+    setQuestionPlaying(true);
     setStage('question');
   };
 
@@ -251,7 +265,7 @@ export function SpeakingPartOnePrototype() {
 
               <article className="relative mr-auto max-w-[90%] rounded-[1.5rem] rounded-tl-md border border-[#d8e1da] bg-[#f3f8f4] p-4 shadow-sm sm:max-w-[76%] sm:p-5">
                 <div className="flex items-start justify-between gap-4"><div><p className="text-[10px] font-bold tracking-[0.16em] text-[#547263]">EXAMINER · QUESTION {turnIndex + 1}</p><p className="mt-1 text-sm font-semibold text-[#40504d]">음성 질문</p></div><div className="relative"><button type="button" aria-label="질문 힌트 열기" onClick={() => setHintOpen((current) => !current)} className="grid size-8 place-items-center rounded-full border border-[#cfdbd3] bg-[#fffdf8] text-[#d76a47] shadow-sm hover:bg-[#fff5ef]"><CircleHelp className="size-4" /></button>{hintOpen && <div className="absolute right-0 top-10 z-30 w-48 overflow-hidden rounded-2xl border border-[#dcd6ca] bg-[#fffdf8] p-1.5 shadow-[0_14px_36px_rgba(29,41,53,0.15)] sm:left-0 sm:right-auto"><button type="button" onClick={() => { setSelectedHint('text'); setHintOpen(false); }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-[#40504d] hover:bg-[#fff4ef]"><Info className="size-4 text-[#d76a47]" />질문 텍스트 보기</button><button type="button" onClick={() => { setSelectedHint('structure'); setHintOpen(false); }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-[#40504d] hover:bg-[#fff4ef]"><Sparkles className="size-4 text-[#d76a47]" />답변 구조 힌트</button></div>}</div></div>
-                <div className="mt-5 flex items-center gap-3"><button type="button" aria-label="질문 다시 듣기" onClick={() => setReplays((current) => Math.min(4, current + 1))} className="grid size-12 place-items-center rounded-2xl bg-[#38634f] text-white shadow-sm transition-transform hover:scale-105 active:scale-95"><Volume2 className="size-5" /></button><div><Waveform active={stage === 'question'} /><p className="mt-1 text-xs text-[#6d7c74]">{replays === 0 ? '첫 질문을 재생했어요.' : `다시 듣기 ${replays} / 4 · 점수 차감 ${replayPenalty}점`}</p></div></div>
+                <div className="mt-5 flex items-center gap-3"><button type="button" aria-label="질문 다시 듣기" onClick={() => { setReplays((current) => Math.min(4, current + 1)); setQuestionPlaying(true); }} className="grid size-12 place-items-center rounded-2xl bg-[#38634f] text-white shadow-sm transition-transform hover:scale-105 active:scale-95"><Volume2 className="size-5" /></button><div><Waveform active={questionPlaying} /><p className="mt-1 text-xs text-[#6d7c74]">{questionPlaying ? '질문을 재생하고 있어요.' : replays === 0 ? '답변하세요.' : `답변하세요. · 다시 듣기 ${replays} / 4`}</p></div></div>
                 {selectedHint === 'text' && <div className="mt-4 rounded-xl border border-[#dbe5dd] bg-white/75 p-3 text-sm leading-6 text-[#40504d]"><span className="mr-2 text-xs font-bold tracking-[0.12em] text-[#d76a47]">TEXT</span>{currentTurn.prompt}</div>}
                 {selectedHint === 'structure' && <div className="mt-4 rounded-xl border border-[#f1d5c8] bg-[#fff9f5] p-3 text-sm leading-6 text-[#5a5048]"><span className="mr-2 text-xs font-bold tracking-[0.12em] text-[#d76a47]">HINT</span>Answer directly, then add one short reason or example.</div>}
               </article>
@@ -260,11 +274,12 @@ export function SpeakingPartOnePrototype() {
 
               {stage === 'processing' && <div className="mx-auto flex w-fit items-center gap-2 rounded-full border border-[#eadbcd] bg-[#fffdf8] px-4 py-2 text-sm font-semibold text-[#7b6357]"><Sparkles className="size-4 animate-pulse text-[#d76a47]" />답변을 정리하고 있어요.</div>}
               {stage === 'feedback' && <div className="mx-auto flex w-fit items-center gap-2 rounded-full border border-[#d7e5db] bg-[#eff7f1] px-4 py-2 text-sm font-semibold text-[#38634f]"><Check className="size-4" />다음 질문을 준비했어요.</div>}
+              <div ref={conversationEndRef} aria-hidden="true" />
             </div>
           </div>
         )}
 
-        {(stage === 'countdown' || stage === 'question') && <footer className="border-t border-[#e7e0d5] bg-[#fffdf8] p-4 sm:p-5"><div className="mx-auto flex max-w-3xl items-center gap-3"><div className="min-w-0 flex-1 rounded-2xl border border-dashed border-[#dcd4c8] bg-[#fbfaf6] px-4 py-3"><div className="flex items-center gap-3"><span className="grid size-9 shrink-0 place-items-center rounded-xl bg-[#eef2ee] text-[#617067]"><Mic className="size-4" /></span><p className="text-sm font-semibold text-[#58645f]">녹음 전에는 서버로 전송되지 않습니다.</p></div></div><button type="button" aria-label="녹음 시작" onClick={beginRecording} className="grid size-14 shrink-0 place-items-center rounded-full bg-[#d76a47] text-white shadow-[0_6px_18px_rgba(215,106,71,0.28)] hover:bg-[#c95b3b]"><Mic className="size-6" /></button></div></footer>}
+        {(stage === 'countdown' || stage === 'question') && <footer className="border-t border-[#e7e0d5] bg-[#fffdf8] p-4 sm:p-5"><div className="mx-auto flex max-w-3xl items-center gap-3"><div className="min-w-0 flex-1 rounded-2xl border border-dashed border-[#dcd4c8] bg-[#fbfaf6] px-4 py-3"><div className="flex items-center gap-3"><span className="grid size-9 shrink-0 place-items-center rounded-xl bg-[#eef2ee] text-[#617067]"><Mic className="size-4" /></span><p className="text-sm font-semibold text-[#58645f]">{questionPlaying ? '질문이 끝나면 녹음할 수 있습니다.' : '녹음 전에는 서버로 전송되지 않습니다.'}</p></div></div><button type="button" aria-label="녹음 시작" onClick={beginRecording} disabled={questionPlaying} className="grid size-14 shrink-0 place-items-center rounded-full bg-[#d76a47] text-white shadow-[0_6px_18px_rgba(215,106,71,0.28)] hover:bg-[#c95b3b] disabled:cursor-not-allowed disabled:bg-[#b9b9b2] disabled:shadow-none"><Mic className="size-6" /></button></div></footer>}
 
         {stage === 'recording' && <footer className="border-t border-[#e7e0d5] bg-[#fffdf8] p-4 sm:p-5"><div className="mx-auto flex max-w-3xl items-center gap-3"><div className="min-w-0 flex-1 rounded-2xl border border-[#f0c5b3] bg-[#fff7f3] px-4 py-3"><div className="flex items-center gap-3"><span className="relative grid size-9 shrink-0 place-items-center rounded-xl bg-[#fff0e9] text-[#d76a47]"><span className="absolute size-3 animate-ping rounded-full bg-[#d76a47]/50" /><Mic className="relative size-4" /></span><div><p className="text-sm font-bold text-[#a74e34]">녹음 중 · 00:{String(audioSeconds).padStart(2, '0')}</p><p className="mt-0.5 text-xs text-[#956452]">이 화면에서는 실제 마이크를 사용하지 않는 목업입니다.</p></div></div></div><button type="button" aria-label="녹음 종료" onClick={finishRecording} className="grid size-14 shrink-0 place-items-center rounded-full bg-[#1d2935] text-white shadow-sm hover:bg-[#344451]"><Pause className="size-5 fill-current" /></button></div></footer>}
 
