@@ -592,7 +592,7 @@ async function createUiCopyPublication(userId: string, note: string | null, rest
     writeFileSync(join(dataDir, 'ui-copy-publications', 'current.json'), serialized, 'utf8');
     const updated = await pool.query<UiCopyPublicationRow>(
       `UPDATE ui_copy_publications
-       SET status = 'ready', content_hash = $2, static_json_path = $3, published_at = NOW()
+       SET status = 'published', content_hash = $2, static_json_path = $3, published_at = NOW()
        WHERE id = $1
        RETURNING *`,
       [publication.id, hash, relativePath],
