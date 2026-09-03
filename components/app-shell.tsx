@@ -22,7 +22,7 @@ const navigation: Array<{ label: AppSection; href: string; icon: LucideIcon }> =
   { label: 'READING', href: '/#reading', icon: BookOpen },
   { label: 'LISTENING', href: '/#listening', icon: Headphones },
   { label: 'WRITING', href: '/writing', icon: PenLine },
-  { label: 'SPEAKING', href: '/#speaking', icon: Mic },
+  { label: 'SPEAKING', href: '/speaking', icon: Mic },
 ];
 
 function NavigationLinks({ activeSection, closeMenu }: { activeSection: AppSection; closeMenu?: () => void }) {
