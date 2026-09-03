@@ -703,7 +703,7 @@ app.get('/api/admin/copy', async (c) => {
   const user = c.get('user');
   if (!await isAdminUser(user.id)) return c.json({ error: '관리자만 문구 관리에 접근할 수 있습니다.' }, 403);
 
-  const [screens, entries, publications] = await Promise.all([
+  const [screens, entries, publications, unpublishedEntries] = await Promise.all([
     pool.query<UiCopyScreenRow>(
       `SELECT id, screen_key, display_name, route_path, sort_order, is_active, created_at
        FROM ui_copy_screens
@@ -725,11 +725,36 @@ app.get('/api/admin/copy', async (c) => {
        ORDER BY version DESC
        LIMIT 20`,
     ),
+    pool.query<{ entry_id: string | number }>(
+      `WITH latest AS (
+         SELECT id
+         FROM ui_copy_publications
+         WHERE status = 'published'
+         ORDER BY version DESC
+         LIMIT 1
+       )
+       SELECT entry.id AS entry_id
+       FROM ui_copy_entries entry
+       JOIN ui_copy_screens screen ON screen.id = entry.screen_id
+       LEFT JOIN latest ON TRUE
+       LEFT JOIN ui_copy_publication_items item
+         ON item.publication_id = latest.id AND item.entry_id = entry.id
+       WHERE (screen.is_active AND entry.is_active AND (
+                latest.id IS NULL
+                OR item.entry_id IS NULL
+                OR item.draft_revision IS DISTINCT FROM entry.draft_revision
+                OR item.screen_id IS DISTINCT FROM entry.screen_id
+                OR item.screen_key IS DISTINCT FROM screen.screen_key
+                OR item.variable_name IS DISTINCT FROM entry.variable_name
+              ))
+          OR ((NOT screen.is_active OR NOT entry.is_active) AND item.entry_id IS NOT NULL)`,
+    ),
   ]);
   return c.json({
     screens: screens.rows.map(serializeUiCopyScreen),
     entries: entries.rows.map(serializeUiCopyEntry),
     publications: publications.rows.map(serializeUiCopyPublication),
+    draftStatus: { unpublishedEntryIds: unpublishedEntries.rows.map((row) => Number(row.entry_id)) },
   });
 });
 
