@@ -25,6 +25,7 @@ type SessionStage = 'ready' | 'countdown' | 'question' | 'recording' | 'recorded
 
 type Turn = {
   prompt: string;
+  translation: string;
   transcript: string;
   feedback: {
     summary: string;
@@ -36,6 +37,7 @@ type Turn = {
 const turns: Turn[] = [
   {
     prompt: 'Let’s talk about your home town. What kind of place is it?',
+    translation: '고향에 대해 이야기해 봅시다. 어떤 곳인가요?',
     transcript: 'My hometown is a coastal city in Korea. It is busy, but it has many beautiful beaches and friendly people.',
     feedback: {
       summary: '질문의 핵심에는 자연스럽게 답했고, 장소를 설명하는 기본 어휘도 적절했어요.',
@@ -45,6 +47,7 @@ const turns: Turn[] = [
   },
   {
     prompt: 'Why do you think people enjoy living there?',
+    translation: '사람들이 그곳에서 사는 것을 좋아하는 이유는 무엇이라고 생각하나요?',
     transcript: 'I think people enjoy living there because they can relax near the sea after work. There are also many good restaurants.',
     feedback: {
       summary: '이유와 예시를 연결해 답변을 확장했어요. 답변 길이도 Part 1에 적절합니다.',
@@ -54,6 +57,7 @@ const turns: Turn[] = [
   },
   {
     prompt: 'Has your home town changed much in recent years?',
+    translation: '최근 몇 년 사이에 고향이 많이 변했나요?',
     transcript: 'Yes, it has changed a lot. More tourists visit the city now, so new hotels and public transport have been developed.',
     feedback: {
       summary: '현재완료와 결과 표현을 사용해 변화에 관해 명확히 답했어요.',
@@ -63,6 +67,7 @@ const turns: Turn[] = [
   },
   {
     prompt: 'Would you like to continue living there in the future?',
+    translation: '앞으로도 그곳에서 계속 살고 싶나요?',
     transcript: 'Yes, I would like to live there because my family is there. However, I may move to another city for my career.',
     feedback: {
       summary: '개인적 이유와 반대 가능성을 함께 제시해 균형 잡힌 답변을 만들었어요.',
@@ -72,6 +77,7 @@ const turns: Turn[] = [
   },
   {
     prompt: 'What do you usually enjoy doing at weekends?',
+    translation: '주말에는 보통 무엇을 하며 시간을 보내는 것을 좋아하나요?',
     transcript: 'At weekends, I usually meet my friends or exercise. It helps me reduce stress and feel ready for the next week.',
     feedback: {
       summary: '일상 활동과 그 효과를 간결하게 연결했습니다.',
@@ -120,10 +126,10 @@ function Countdown({ open, onDone }: { open: boolean; onDone: () => void }) {
 }
 
 function ResultDialog({ turn, open, onClose }: { turn: Turn; open: boolean; onClose: () => void }) {
-  const [tab, setTab] = useState<'answer' | 'feedback'>('answer');
+  const [tab, setTab] = useState<'question' | 'answer' | 'feedback'>('question');
   useDocumentScrollLock(open);
   useEffect(() => {
-    if (open) setTab('answer');
+    if (open) setTab('question');
   }, [open]);
   if (!open) return null;
 
@@ -136,11 +142,12 @@ function ResultDialog({ turn, open, onClose }: { turn: Turn; open: boolean; onCl
           <button type="button" onClick={onClose} className="grid size-9 place-items-center rounded-xl text-[#69736e] hover:bg-[#f1ede5]"><X className="size-5" /></button>
         </header>
         <div className="flex border-b border-[#e5ded3] px-5 sm:px-7">
-          <button type="button" onClick={() => setTab('answer')} className={`border-b-2 px-3 py-3 text-sm font-bold ${tab === 'answer' ? 'border-[#d76a47] text-[#d76a47]' : 'border-transparent text-[#7b827e]'}`}>내 답변</button>
-          <button type="button" onClick={() => setTab('feedback')} className={`border-b-2 px-3 py-3 text-sm font-bold ${tab === 'feedback' ? 'border-[#d76a47] text-[#d76a47]' : 'border-transparent text-[#7b827e]'}`}>피드백 · 개선</button>
+          <button type="button" onClick={() => setTab('question')} className={`flex-1 whitespace-nowrap border-b-2 px-2 py-3 text-xs font-bold sm:flex-none sm:px-3 sm:text-sm ${tab === 'question' ? 'border-[#d76a47] text-[#d76a47]' : 'border-transparent text-[#7b827e]'}`}>질문</button>
+          <button type="button" onClick={() => setTab('answer')} className={`flex-1 whitespace-nowrap border-b-2 px-2 py-3 text-xs font-bold sm:flex-none sm:px-3 sm:text-sm ${tab === 'answer' ? 'border-[#d76a47] text-[#d76a47]' : 'border-transparent text-[#7b827e]'}`}>내 답변</button>
+          <button type="button" onClick={() => setTab('feedback')} className={`flex-1 whitespace-nowrap border-b-2 px-2 py-3 text-xs font-bold sm:flex-none sm:px-3 sm:text-sm ${tab === 'feedback' ? 'border-[#d76a47] text-[#d76a47]' : 'border-transparent text-[#7b827e]'}`}>피드백 · 개선</button>
         </div>
         <div className="min-h-64 px-5 py-6 sm:px-7">
-          {tab === 'answer' ? <div><p className="text-xs font-bold tracking-[0.14em] text-[#7d8780]">TRANSCRIPT</p><p className="mt-3 font-serif text-xl leading-8 text-[#2b393d]">{turn.transcript}</p><button type="button" className="mt-6 inline-flex items-center gap-2 rounded-xl border border-[#d7d0c4] bg-white px-4 py-2.5 text-sm font-bold text-[#34434b] hover:bg-[#f7f4ed]"><Headphones className="size-4 text-[#d76a47]" />내 녹음 듣기</button></div> : <div className="space-y-5"><section><p className="text-xs font-bold tracking-[0.14em] text-[#d76a47]">ASSESSMENT</p><p className="mt-2 leading-7 text-[#40504d]">{turn.feedback.summary}</p></section><section className="rounded-2xl bg-[#fff4ee] p-4"><p className="text-xs font-bold tracking-[0.14em] text-[#c85f40]">IMPROVE NEXT</p><p className="mt-2 leading-7 text-[#5e5049]">{turn.feedback.improve}</p></section></div>}
+          {tab === 'question' ? <div className="space-y-5"><section><p className="text-xs font-bold tracking-[0.14em] text-[#d76a47]">QUESTION</p><p className="mt-3 font-serif text-xl leading-8 text-[#2b393d]">{turn.prompt}</p></section><section className="rounded-2xl bg-[#eff6f1] p-4"><p className="text-xs font-bold tracking-[0.14em] text-[#547263]">한국어 뜻</p><p className="mt-2 leading-7 text-[#40504d]">{turn.translation}</p></section></div> : tab === 'answer' ? <div><p className="text-xs font-bold tracking-[0.14em] text-[#7d8780]">TRANSCRIPT</p><p className="mt-3 font-serif text-xl leading-8 text-[#2b393d]">{turn.transcript}</p><button type="button" className="mt-6 inline-flex items-center gap-2 rounded-xl border border-[#d7d0c4] bg-white px-4 py-2.5 text-sm font-bold text-[#34434b] hover:bg-[#f7f4ed]"><Headphones className="size-4 text-[#d76a47]" />내 녹음 듣기</button></div> : <div className="space-y-5"><section><p className="text-xs font-bold tracking-[0.14em] text-[#d76a47]">ASSESSMENT</p><p className="mt-2 leading-7 text-[#40504d]">{turn.feedback.summary}</p></section><section className="rounded-2xl bg-[#fff4ee] p-4"><p className="text-xs font-bold tracking-[0.14em] text-[#c85f40]">IMPROVE NEXT</p><p className="mt-2 leading-7 text-[#5e5049]">{turn.feedback.improve}</p></section></div>}
         </div>
       </section>
     </>
@@ -179,9 +186,15 @@ export function SpeakingPartOnePrototype() {
       setHintOpen(false);
       setSelectedHint(null);
       setStage('countdown');
-    }, 1_500);
+    }, 80);
     return () => window.clearTimeout(timer);
   }, [stage, turnIndex]);
+
+  useEffect(() => {
+    if (stage !== 'processing') return;
+    const timer = window.setTimeout(() => setStage('feedback'), 2_000);
+    return () => window.clearTimeout(timer);
+  }, [stage]);
 
   const startQuestion = () => {
     setReplays(0);
@@ -199,10 +212,7 @@ export function SpeakingPartOnePrototype() {
     setAudioSeconds((current) => Math.max(current, 42));
     setStage('recorded');
   };
-  const sendRecording = () => {
-    setStage('processing');
-    window.setTimeout(() => setStage('feedback'), 900);
-  };
+  const sendRecording = () => setStage('processing');
 
   return (
     <>
@@ -240,13 +250,13 @@ export function SpeakingPartOnePrototype() {
               ))}
 
               <article className="relative mr-auto max-w-[90%] rounded-[1.5rem] rounded-tl-md border border-[#d8e1da] bg-[#f3f8f4] p-4 shadow-sm sm:max-w-[76%] sm:p-5">
-                <div className="flex items-start justify-between gap-4"><div><p className="text-[10px] font-bold tracking-[0.16em] text-[#547263]">EXAMINER · QUESTION {turnIndex + 1}</p><p className="mt-1 text-sm font-semibold text-[#40504d]">음성 질문</p></div><div className="relative"><button type="button" aria-label="질문 힌트 열기" onClick={() => setHintOpen((current) => !current)} className="grid size-8 place-items-center rounded-full border border-[#cfdbd3] bg-[#fffdf8] text-[#d76a47] shadow-sm hover:bg-[#fff5ef]"><CircleHelp className="size-4" /></button>{hintOpen && <div className="absolute left-0 top-10 z-30 w-48 overflow-hidden rounded-2xl border border-[#dcd6ca] bg-[#fffdf8] p-1.5 shadow-[0_14px_36px_rgba(29,41,53,0.15)]"><button type="button" onClick={() => { setSelectedHint('text'); setHintOpen(false); }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-[#40504d] hover:bg-[#fff4ef]"><Info className="size-4 text-[#d76a47]" />질문 텍스트 보기</button><button type="button" onClick={() => { setSelectedHint('structure'); setHintOpen(false); }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-[#40504d] hover:bg-[#fff4ef]"><Sparkles className="size-4 text-[#d76a47]" />답변 구조 힌트</button></div>}</div></div>
+                <div className="flex items-start justify-between gap-4"><div><p className="text-[10px] font-bold tracking-[0.16em] text-[#547263]">EXAMINER · QUESTION {turnIndex + 1}</p><p className="mt-1 text-sm font-semibold text-[#40504d]">음성 질문</p></div><div className="relative"><button type="button" aria-label="질문 힌트 열기" onClick={() => setHintOpen((current) => !current)} className="grid size-8 place-items-center rounded-full border border-[#cfdbd3] bg-[#fffdf8] text-[#d76a47] shadow-sm hover:bg-[#fff5ef]"><CircleHelp className="size-4" /></button>{hintOpen && <div className="absolute right-0 top-10 z-30 w-48 overflow-hidden rounded-2xl border border-[#dcd6ca] bg-[#fffdf8] p-1.5 shadow-[0_14px_36px_rgba(29,41,53,0.15)] sm:left-0 sm:right-auto"><button type="button" onClick={() => { setSelectedHint('text'); setHintOpen(false); }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-[#40504d] hover:bg-[#fff4ef]"><Info className="size-4 text-[#d76a47]" />질문 텍스트 보기</button><button type="button" onClick={() => { setSelectedHint('structure'); setHintOpen(false); }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-[#40504d] hover:bg-[#fff4ef]"><Sparkles className="size-4 text-[#d76a47]" />답변 구조 힌트</button></div>}</div></div>
                 <div className="mt-5 flex items-center gap-3"><button type="button" aria-label="질문 다시 듣기" onClick={() => setReplays((current) => Math.min(4, current + 1))} className="grid size-12 place-items-center rounded-2xl bg-[#38634f] text-white shadow-sm transition-transform hover:scale-105 active:scale-95"><Volume2 className="size-5" /></button><div><Waveform active={stage === 'question'} /><p className="mt-1 text-xs text-[#6d7c74]">{replays === 0 ? '첫 질문을 재생했어요.' : `다시 듣기 ${replays} / 4 · 점수 차감 ${replayPenalty}점`}</p></div></div>
                 {selectedHint === 'text' && <div className="mt-4 rounded-xl border border-[#dbe5dd] bg-white/75 p-3 text-sm leading-6 text-[#40504d]"><span className="mr-2 text-xs font-bold tracking-[0.12em] text-[#d76a47]">TEXT</span>{currentTurn.prompt}</div>}
                 {selectedHint === 'structure' && <div className="mt-4 rounded-xl border border-[#f1d5c8] bg-[#fff9f5] p-3 text-sm leading-6 text-[#5a5048]"><span className="mr-2 text-xs font-bold tracking-[0.12em] text-[#d76a47]">HINT</span>Answer directly, then add one short reason or example.</div>}
               </article>
 
-              {(stage === 'recorded' || stage === 'processing' || stage === 'feedback') && <article className="ml-auto max-w-[90%] rounded-[1.5rem] rounded-tr-md bg-[#1d2935] p-4 text-[#fffdf8] shadow-sm sm:max-w-[76%] sm:p-5"><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-2xl bg-white/10"><Mic className="size-5" /></span><div><p className="text-[10px] font-bold tracking-[0.16em] text-[#f0b197]">MY RECORDING</p><p className="mt-1 text-sm font-semibold">임시 녹음 · {String(audioSeconds || 42).padStart(2, '0')}초</p></div></div><div className="mt-4 flex items-center gap-2"><button type="button" className="grid size-8 place-items-center rounded-full bg-white text-[#1d2935]"><Play className="size-4 fill-current" /></button><div className="h-1.5 flex-1 rounded-full bg-white/20"><div className="h-full w-[42%] rounded-full bg-[#f0b197]" /></div><span className="text-xs text-white/65">00:{String(audioSeconds || 42).padStart(2, '0')}</span></div>{stage === 'feedback' && <button type="button" onClick={() => setResultTurnIndex(turnIndex)} className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-white/25 bg-white/10 px-4 py-2.5 text-sm font-bold hover:bg-white/15"><Info className="size-4" />답변 확인</button>}</article>}
+              {(stage === 'recorded' || stage === 'processing' || stage === 'feedback') && <article className="ml-auto max-w-[90%] rounded-[1.5rem] rounded-tr-md bg-[#1d2935] p-4 text-[#fffdf8] shadow-sm sm:max-w-[76%] sm:p-5"><div className="flex items-center gap-3"><span className={`relative grid size-10 place-items-center rounded-2xl bg-white/10 ${stage === 'processing' ? 'text-[#f0b197]' : ''}`}>{stage === 'processing' && <span className="absolute inset-1 rounded-xl border border-[#f0b197] animate-ping" />}<Mic className={`relative size-5 ${stage === 'processing' ? 'animate-pulse' : ''}`} /></span><div><p className="text-[10px] font-bold tracking-[0.16em] text-[#f0b197]">MY RECORDING</p><p className="mt-1 text-sm font-semibold">{stage === 'processing' ? '답변 처리 중…' : `임시 녹음 · ${String(audioSeconds || 42).padStart(2, '0')}초`}</p></div></div><div className="mt-4 flex items-center gap-2"><button type="button" className="grid size-8 place-items-center rounded-full bg-white text-[#1d2935]"><Play className="size-4 fill-current" /></button><div className="h-1.5 flex-1 rounded-full bg-white/20"><div className={`h-full rounded-full bg-[#f0b197] ${stage === 'processing' ? 'w-3/4 animate-pulse' : 'w-[42%]'}`} /></div><span className="text-xs text-white/65">00:{String(audioSeconds || 42).padStart(2, '0')}</span></div>{stage === 'feedback' && <button type="button" onClick={() => setResultTurnIndex(turnIndex)} className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-white/25 bg-white/10 px-4 py-2.5 text-sm font-bold hover:bg-white/15"><Info className="size-4" />답변 확인</button>}</article>}
 
               {stage === 'processing' && <div className="mx-auto flex w-fit items-center gap-2 rounded-full border border-[#eadbcd] bg-[#fffdf8] px-4 py-2 text-sm font-semibold text-[#7b6357]"><Sparkles className="size-4 animate-pulse text-[#d76a47]" />답변을 정리하고 있어요.</div>}
               {stage === 'feedback' && <div className="mx-auto flex w-fit items-center gap-2 rounded-full border border-[#d7e5db] bg-[#eff7f1] px-4 py-2 text-sm font-semibold text-[#38634f]"><Check className="size-4" />다음 질문을 준비했어요.</div>}
