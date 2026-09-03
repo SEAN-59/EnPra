@@ -1,6 +1,6 @@
 import { serve } from '@hono/node-server';
 import { createHash, timingSafeEqual } from 'node:crypto';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
@@ -37,8 +37,10 @@ type VocabularyListRow = {
 };
 type UiCopyEntryRow = {
   id: string | number;
-  copy_key: string;
-  scope: string;
+  screen_id: string | number;
+  screen_key: string;
+  screen_label: string;
+  variable_name: string;
   locale: string;
   description: string | null;
   text_format: 'plain' | 'multiline';
@@ -48,6 +50,15 @@ type UiCopyEntryRow = {
   draft_revision: number;
   is_active: boolean;
   draft_updated_at: string;
+  created_at: string;
+};
+type UiCopyScreenRow = {
+  id: string | number;
+  screen_key: string;
+  display_name: string;
+  route_path: string | null;
+  sort_order: number;
+  is_active: boolean;
   created_at: string;
 };
 type UiCopyPublicationRow = {
@@ -64,8 +75,9 @@ type UiCopyPublicationRow = {
   failure_reason: string | null;
 };
 type UiCopySnapshotInput = {
-  copy_key: string;
-  scope: string;
+  screen_id: string | number | null;
+  screen_key: string;
+  variable_name: string;
   locale: string;
   text: string;
   text_format: 'plain' | 'multiline';
@@ -230,10 +242,23 @@ async function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS user_vocabulary_list_subscriptions_visible_idx
       ON user_vocabulary_list_subscriptions (user_id, is_enabled, updated_at DESC);
 
+    CREATE TABLE IF NOT EXISTS ui_copy_screens (
+      id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      screen_key TEXT NOT NULL UNIQUE,
+      display_name TEXT NOT NULL,
+      route_path TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CHECK (screen_key ~ '^[a-z0-9]+(\\.[a-z0-9_]+)*$'),
+      CHECK (char_length(trim(display_name)) > 0)
+    );
+
     CREATE TABLE IF NOT EXISTS ui_copy_entries (
       id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-      copy_key TEXT NOT NULL UNIQUE,
-      scope TEXT NOT NULL,
+      screen_id BIGINT NOT NULL REFERENCES ui_copy_screens(id) ON DELETE RESTRICT,
+      variable_name TEXT NOT NULL,
       locale TEXT NOT NULL DEFAULT 'ko',
       description TEXT,
       text_format TEXT NOT NULL DEFAULT 'plain'
@@ -248,13 +273,10 @@ async function initializeDatabase() {
       draft_updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      CHECK (copy_key ~ '^[a-z0-9]+(\\.[a-z0-9_]+)+$'),
-      CHECK (char_length(trim(draft_text)) > 0)
+      CHECK (variable_name ~ '^[a-z][a-z0-9_]*$'),
+      CHECK (char_length(trim(draft_text)) > 0),
+      UNIQUE (screen_id, variable_name)
     );
-
-    CREATE INDEX IF NOT EXISTS ui_copy_entries_scope_active_idx
-      ON ui_copy_entries (scope, locale, copy_key)
-      WHERE is_active = TRUE;
 
     CREATE TABLE IF NOT EXISTS ui_copy_publications (
       id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -278,19 +300,98 @@ async function initializeDatabase() {
 
     CREATE TABLE IF NOT EXISTS ui_copy_publication_items (
       publication_id BIGINT NOT NULL REFERENCES ui_copy_publications(id) ON DELETE CASCADE,
-      copy_key TEXT NOT NULL,
+      screen_id BIGINT REFERENCES ui_copy_screens(id) ON DELETE SET NULL,
+      screen_key TEXT NOT NULL,
+      variable_name TEXT NOT NULL,
       entry_id BIGINT REFERENCES ui_copy_entries(id) ON DELETE SET NULL,
-      scope TEXT NOT NULL,
       locale TEXT NOT NULL,
       text TEXT NOT NULL,
       text_format TEXT NOT NULL CHECK (text_format IN ('plain', 'multiline')),
       template_variables JSONB NOT NULL DEFAULT '[]'::jsonb,
       draft_revision INTEGER NOT NULL,
-      PRIMARY KEY (publication_id, copy_key)
+      PRIMARY KEY (publication_id, screen_key, variable_name)
     );
 
-    CREATE INDEX IF NOT EXISTS ui_copy_publication_items_scope_idx
-      ON ui_copy_publication_items (publication_id, scope, locale, copy_key);
+    ALTER TABLE ui_copy_entries ADD COLUMN IF NOT EXISTS screen_id BIGINT REFERENCES ui_copy_screens(id) ON DELETE RESTRICT;
+    ALTER TABLE ui_copy_entries ADD COLUMN IF NOT EXISTS variable_name TEXT;
+    ALTER TABLE ui_copy_publication_items ADD COLUMN IF NOT EXISTS screen_id BIGINT REFERENCES ui_copy_screens(id) ON DELETE SET NULL;
+    ALTER TABLE ui_copy_publication_items ADD COLUMN IF NOT EXISTS screen_key TEXT;
+    ALTER TABLE ui_copy_publication_items ADD COLUMN IF NOT EXISTS variable_name TEXT;
+
+    DO $$
+    BEGIN
+      IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'ui_copy_entries' AND column_name = 'scope') THEN
+        INSERT INTO ui_copy_screens (screen_key, display_name)
+        SELECT DISTINCT scope, scope FROM ui_copy_entries
+        WHERE scope IS NOT NULL
+        ON CONFLICT (screen_key) DO NOTHING;
+
+        UPDATE ui_copy_entries entry
+        SET screen_id = screen.id
+        FROM ui_copy_screens screen
+        WHERE entry.screen_id IS NULL AND screen.screen_key = entry.scope;
+      END IF;
+
+      IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'ui_copy_entries' AND column_name = 'copy_key') THEN
+        UPDATE ui_copy_entries
+        SET variable_name = COALESCE(variable_name, regexp_replace(copy_key, '^.*\\.', ''))
+        WHERE variable_name IS NULL;
+      END IF;
+
+      IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'ui_copy_publication_items' AND column_name = 'scope') THEN
+        UPDATE ui_copy_publication_items
+        SET screen_key = COALESCE(screen_key, scope)
+        WHERE screen_key IS NULL;
+
+        UPDATE ui_copy_publication_items item
+        SET screen_id = screen.id
+        FROM ui_copy_screens screen
+        WHERE item.screen_id IS NULL AND screen.screen_key = item.scope;
+      END IF;
+
+      IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'ui_copy_publication_items' AND column_name = 'copy_key') THEN
+        UPDATE ui_copy_publication_items
+        SET variable_name = COALESCE(variable_name, regexp_replace(copy_key, '^.*\\.', ''))
+        WHERE variable_name IS NULL;
+      END IF;
+    END $$;
+
+    ALTER TABLE ui_copy_entries DROP CONSTRAINT IF EXISTS ui_copy_entries_copy_key_key;
+    ALTER TABLE ui_copy_entries DROP COLUMN IF EXISTS copy_key;
+    ALTER TABLE ui_copy_entries DROP COLUMN IF EXISTS scope;
+    ALTER TABLE ui_copy_entries ALTER COLUMN screen_id SET NOT NULL;
+    ALTER TABLE ui_copy_entries ALTER COLUMN variable_name SET NOT NULL;
+    ALTER TABLE ui_copy_entries DROP CONSTRAINT IF EXISTS ui_copy_entries_screen_variable_unique;
+    ALTER TABLE ui_copy_entries ADD CONSTRAINT ui_copy_entries_screen_variable_unique UNIQUE (screen_id, variable_name);
+
+    ALTER TABLE ui_copy_publication_items DROP CONSTRAINT IF EXISTS ui_copy_publication_items_pkey;
+    ALTER TABLE ui_copy_publication_items DROP COLUMN IF EXISTS copy_key;
+    ALTER TABLE ui_copy_publication_items DROP COLUMN IF EXISTS scope;
+    ALTER TABLE ui_copy_publication_items ALTER COLUMN screen_key SET NOT NULL;
+    ALTER TABLE ui_copy_publication_items ALTER COLUMN variable_name SET NOT NULL;
+    ALTER TABLE ui_copy_publication_items ADD CONSTRAINT ui_copy_publication_items_pkey PRIMARY KEY (publication_id, screen_key, variable_name);
+
+    CREATE INDEX IF NOT EXISTS ui_copy_entries_screen_active_idx
+      ON ui_copy_entries (screen_id, locale, variable_name)
+      WHERE is_active = TRUE;
+
+    CREATE INDEX IF NOT EXISTS ui_copy_publication_items_screen_idx
+      ON ui_copy_publication_items (publication_id, screen_key, locale, variable_name);
+  `);
+  await pool.query(`
+    INSERT INTO ui_copy_screens (screen_key, display_name, route_path, sort_order)
+    VALUES ('manage.copy', 'MANAGE 문구 관리', '/admin', 9_000)
+    ON CONFLICT (screen_key) DO NOTHING;
+
+    INSERT INTO ui_copy_entries (screen_id, variable_name, description, draft_text)
+    SELECT id, 'title', 'MANAGE 화면의 정적 문구 관리 제목', '서비스 문구 관리'
+    FROM ui_copy_screens WHERE screen_key = 'manage.copy'
+    ON CONFLICT (screen_id, variable_name) DO NOTHING;
+
+    INSERT INTO ui_copy_entries (screen_id, variable_name, description, draft_text)
+    SELECT id, 'description', 'MANAGE 화면의 정적 문구 관리 설명', '문구는 소속 화면 아래에서 관리합니다.'
+    FROM ui_copy_screens WHERE screen_key = 'manage.copy'
+    ON CONFLICT (screen_id, variable_name) DO NOTHING;
   `);
   await initializeWritingDatabase(pool);
 }
@@ -351,8 +452,10 @@ async function isAdminUser(userId: string) {
 function serializeUiCopyEntry(row: UiCopyEntryRow) {
   return {
     id: Number(row.id),
-    copyKey: row.copy_key,
-    scope: row.scope,
+    screenId: Number(row.screen_id),
+    screenKey: row.screen_key,
+    screenLabel: row.screen_label,
+    variableName: row.variable_name,
     locale: row.locale,
     description: row.description,
     textFormat: row.text_format,
@@ -362,6 +465,18 @@ function serializeUiCopyEntry(row: UiCopyEntryRow) {
     draftRevision: Number(row.draft_revision),
     isActive: row.is_active,
     draftUpdatedAt: row.draft_updated_at,
+    createdAt: row.created_at,
+  };
+}
+
+function serializeUiCopyScreen(row: UiCopyScreenRow) {
+  return {
+    id: Number(row.id),
+    screenKey: row.screen_key,
+    displayName: row.display_name,
+    routePath: row.route_path,
+    sortOrder: Number(row.sort_order),
+    isActive: row.is_active,
     createdAt: row.created_at,
   };
 }
@@ -382,8 +497,12 @@ function serializeUiCopyPublication(row: UiCopyPublicationRow) {
   };
 }
 
-function isCopyKey(value: string) {
-  return /^[a-z0-9]+(\.[a-z0-9_]+)+$/.test(value);
+function isScreenKey(value: string) {
+  return /^[a-z0-9]+(\.[a-z0-9_]+)*$/.test(value);
+}
+
+function isVariableName(value: string) {
+  return /^[a-z][a-z0-9_]*$/.test(value);
 }
 
 function parseTemplateVariables(value: unknown) {
@@ -401,20 +520,22 @@ async function createUiCopyPublication(userId: string, note: string | null, rest
     await client.query('BEGIN');
     if (restoreFromPublicationId) {
       const source = await client.query<UiCopySnapshotInput>(
-        `SELECT copy_key, scope, locale, text, text_format, template_variables, draft_revision, entry_id
+        `SELECT screen_id, screen_key, variable_name, locale, text, text_format, template_variables, draft_revision, entry_id
          FROM ui_copy_publication_items
          WHERE publication_id = $1
-         ORDER BY scope ASC, locale ASC, copy_key ASC`,
+         ORDER BY screen_key ASC, locale ASC, variable_name ASC`,
         [restoreFromPublicationId],
       );
       if (!source.rowCount) throw new Error('복원할 발행본을 찾을 수 없습니다.');
       snapshot = source.rows;
     } else {
       const source = await client.query<UiCopySnapshotInput>(
-        `SELECT id AS entry_id, copy_key, scope, locale, draft_text AS text, text_format, template_variables, draft_revision
-         FROM ui_copy_entries
-         WHERE is_active = TRUE
-         ORDER BY scope ASC, locale ASC, copy_key ASC`,
+        `SELECT entry.id AS entry_id, entry.screen_id, screen.screen_key, entry.variable_name,
+                entry.locale, entry.draft_text AS text, entry.text_format, entry.template_variables, entry.draft_revision
+         FROM ui_copy_entries entry
+         JOIN ui_copy_screens screen ON screen.id = entry.screen_id
+         WHERE entry.is_active = TRUE AND screen.is_active = TRUE
+         ORDER BY screen.screen_key ASC, entry.locale ASC, entry.variable_name ASC`,
       );
       if (!source.rowCount) throw new Error('발행할 활성 문구가 없습니다.');
       snapshot = source.rows;
@@ -430,9 +551,9 @@ async function createUiCopyPublication(userId: string, note: string | null, rest
     for (const item of snapshot) {
       await client.query(
         `INSERT INTO ui_copy_publication_items
-          (publication_id, copy_key, entry_id, scope, locale, text, text_format, template_variables, draft_revision)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-        [publication.id, item.copy_key, item.entry_id, item.scope, item.locale, item.text, item.text_format, JSON.stringify(item.template_variables ?? []), item.draft_revision],
+          (publication_id, screen_id, screen_key, variable_name, entry_id, locale, text, text_format, template_variables, draft_revision)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [publication.id, item.screen_id, item.screen_key, item.variable_name, item.entry_id, item.locale, item.text, item.text_format, JSON.stringify(item.template_variables ?? []), item.draft_revision],
       );
     }
     await client.query('COMMIT');
@@ -449,14 +570,17 @@ async function createUiCopyPublication(userId: string, note: string | null, rest
     schemaVersion: 1,
     publicationVersion: version,
     generatedAt: new Date().toISOString(),
-    entries: snapshot.map((item) => ({
-      key: item.copy_key,
-      scope: item.scope,
-      locale: item.locale,
-      text: item.text,
-      format: item.text_format,
-      variables: Array.isArray(item.template_variables) ? item.template_variables : [],
-    })),
+    screens: Object.fromEntries(snapshot.reduce((groups, item) => {
+      const current = groups.get(item.screen_key) ?? {};
+      current[item.variable_name] = {
+        locale: item.locale,
+        text: item.text,
+        format: item.text_format,
+        variables: Array.isArray(item.template_variables) ? item.template_variables : [],
+      };
+      groups.set(item.screen_key, current);
+      return groups;
+    }, new Map<string, Record<string, unknown>>()).entries()),
   };
   const serialized = `${JSON.stringify(payload, null, 2)}\n`;
   const hash = createHash('sha256').update(serialized).digest('hex');
@@ -465,6 +589,7 @@ async function createUiCopyPublication(userId: string, note: string | null, rest
     const destination = join(dataDir, relativePath);
     mkdirSync(join(dataDir, 'ui-copy-publications'), { recursive: true });
     writeFileSync(destination, serialized, 'utf8');
+    writeFileSync(join(dataDir, 'ui-copy-publications', 'current.json'), serialized, 'utf8');
     const updated = await pool.query<UiCopyPublicationRow>(
       `UPDATE ui_copy_publications
        SET status = 'ready', content_hash = $2, static_json_path = $3, published_at = NOW()
@@ -526,6 +651,19 @@ app.get('/health', async (c) => {
   return c.json({ ok: true, database: 'connected' });
 });
 
+app.get('/content/ui-copy/current.json', (c) => {
+  const currentPath = join(dataDir, 'ui-copy-publications', 'current.json');
+  if (!existsSync(currentPath)) return c.json({ error: 'No published copy bundle exists.' }, 404);
+  const content = readFileSync(currentPath);
+  const etag = createHash('sha256').update(content).digest('hex');
+  if (c.req.header('If-None-Match') === `"${etag}"`) return c.body(null, 304, { ETag: `"${etag}"` });
+  return c.body(content, 200, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'public, max-age=15, s-maxage=15, stale-while-revalidate=60',
+    ETag: `"${etag}"`,
+  });
+});
+
 app.use('/api/*', async (c, next) => {
   if (!isExpectedToken(c.req.header('X-EnPra-Service-Token'))) return c.json({ error: 'Unauthorized bridge request.' }, 401);
 
@@ -565,13 +703,20 @@ app.get('/api/admin/copy', async (c) => {
   const user = c.get('user');
   if (!await isAdminUser(user.id)) return c.json({ error: '관리자만 문구 관리에 접근할 수 있습니다.' }, 403);
 
-  const [entries, publications] = await Promise.all([
+  const [screens, entries, publications] = await Promise.all([
+    pool.query<UiCopyScreenRow>(
+      `SELECT id, screen_key, display_name, route_path, sort_order, is_active, created_at
+       FROM ui_copy_screens
+       ORDER BY sort_order ASC, screen_key ASC`,
+    ),
     pool.query<UiCopyEntryRow>(
-      `SELECT id, copy_key, scope, locale, description, text_format, draft_text,
-              template_variables, max_length, draft_revision, is_active,
-              draft_updated_at, created_at
-       FROM ui_copy_entries
-       ORDER BY scope ASC, locale ASC, copy_key ASC`,
+      `SELECT entry.id, entry.screen_id, screen.screen_key, screen.display_name AS screen_label,
+              entry.variable_name, entry.locale, entry.description, entry.text_format, entry.draft_text,
+              entry.template_variables, entry.max_length, entry.draft_revision, entry.is_active,
+              entry.draft_updated_at, entry.created_at
+       FROM ui_copy_entries entry
+       JOIN ui_copy_screens screen ON screen.id = entry.screen_id
+       ORDER BY screen.sort_order ASC, screen.screen_key ASC, entry.locale ASC, entry.variable_name ASC`,
     ),
     pool.query<UiCopyPublicationRow>(
       `SELECT id, version, status, content_hash, static_json_path, copy_count,
@@ -582,6 +727,7 @@ app.get('/api/admin/copy', async (c) => {
     ),
   ]);
   return c.json({
+    screens: screens.rows.map(serializeUiCopyScreen),
     entries: entries.rows.map(serializeUiCopyEntry),
     publications: publications.rows.map(serializeUiCopyPublication),
   });
@@ -599,31 +745,57 @@ app.post('/api/admin/copy', async (c) => {
   }
   const action = typeof body.action === 'string' ? body.action : '';
 
+  if (action === 'create-screen') {
+    const screenKey = typeof body.screenKey === 'string' ? body.screenKey.trim() : '';
+    const displayName = typeof body.displayName === 'string' ? body.displayName.trim() : '';
+    const routePath = typeof body.routePath === 'string' ? body.routePath.trim() : '';
+    const sortOrder = body.sortOrder === undefined || body.sortOrder === '' ? 0 : Number(body.sortOrder);
+    if (!isScreenKey(screenKey) || screenKey.length > 180 || !displayName || displayName.length > 120 || (routePath && (!routePath.startsWith('/') || routePath.length > 300)) || !Number.isSafeInteger(sortOrder) || sortOrder < -10_000 || sortOrder > 10_000) {
+      return c.json({ error: '화면 변수명, 화면명, 경로를 확인해 주세요.' }, 400);
+    }
+    try {
+      const created = await pool.query<UiCopyScreenRow>(
+        `INSERT INTO ui_copy_screens (screen_key, display_name, route_path, sort_order)
+         VALUES ($1, $2, $3, $4)
+         RETURNING id, screen_key, display_name, route_path, sort_order, is_active, created_at`,
+        [screenKey, displayName, routePath || null, sortOrder],
+      );
+      return c.json({ screen: serializeUiCopyScreen(created.rows[0]) }, 201);
+    } catch (error) {
+      if ((error as { code?: string }).code === '23505') return c.json({ error: '이미 등록된 소속 화면입니다.' }, 409);
+      throw error;
+    }
+  }
+
   if (action === 'create-entry') {
-    const copyKey = typeof body.copyKey === 'string' ? body.copyKey.trim() : '';
-    const scope = typeof body.scope === 'string' ? body.scope.trim() : '';
+    const screenId = Number(body.screenId);
+    const variableName = typeof body.variableName === 'string' ? body.variableName.trim() : '';
     const locale = typeof body.locale === 'string' ? body.locale.trim() : 'ko';
     const description = typeof body.description === 'string' ? body.description.trim() : '';
     const textFormat = body.textFormat === 'multiline' ? 'multiline' : body.textFormat === 'plain' ? 'plain' : null;
     const draftText = typeof body.draftText === 'string' ? body.draftText.trim() : '';
     const templateVariables = parseTemplateVariables(body.templateVariables ?? []);
     const maxLength = body.maxLength === null || body.maxLength === undefined || body.maxLength === '' ? null : Number(body.maxLength);
-    if (!isCopyKey(copyKey) || copyKey.length > 180 || !scope || scope.length > 180 || !/^[a-z]{2}(?:-[A-Z]{2})?$/.test(locale) || description.length > 500 || !textFormat || !draftText || draftText.length > 5000 || templateVariables === null || (maxLength !== null && (!Number.isSafeInteger(maxLength) || maxLength < 1 || maxLength > 5000)) || (maxLength !== null && draftText.length > maxLength)) {
-      return c.json({ error: '변수명, 소속, 문구 내용과 길이 제한을 확인해 주세요.' }, 400);
+    if (!Number.isSafeInteger(screenId) || screenId < 1 || !isVariableName(variableName) || variableName.length > 80 || !/^[a-z]{2}(?:-[A-Z]{2})?$/.test(locale) || description.length > 500 || !textFormat || !draftText || draftText.length > 5000 || templateVariables === null || (maxLength !== null && (!Number.isSafeInteger(maxLength) || maxLength < 1 || maxLength > 5000)) || (maxLength !== null && draftText.length > maxLength)) {
+      return c.json({ error: '변수명, 소속 화면, 문구 내용과 길이 제한을 확인해 주세요.' }, 400);
     }
     try {
       const created = await pool.query<UiCopyEntryRow>(
         `INSERT INTO ui_copy_entries
-          (copy_key, scope, locale, description, text_format, draft_text, template_variables, max_length, created_by_user_id, draft_updated_by_user_id)
+          (screen_id, variable_name, locale, description, text_format, draft_text, template_variables, max_length, created_by_user_id, draft_updated_by_user_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
-         RETURNING id, copy_key, scope, locale, description, text_format, draft_text,
+         RETURNING id, screen_id, variable_name, locale, description, text_format, draft_text,
                    template_variables, max_length, draft_revision, is_active,
                    draft_updated_at, created_at`,
-        [copyKey, scope, locale, description || null, textFormat, draftText, JSON.stringify(templateVariables), maxLength, user.id],
+        [screenId, variableName, locale, description || null, textFormat, draftText, JSON.stringify(templateVariables), maxLength, user.id],
       );
-      return c.json({ entry: serializeUiCopyEntry(created.rows[0]) }, 201);
+      const entry = created.rows[0];
+      const screen = await pool.query<{ screen_key: string; display_name: string }>('SELECT screen_key, display_name FROM ui_copy_screens WHERE id = $1', [screenId]);
+      if (!screen.rows[0]) return c.json({ error: '소속 화면을 찾을 수 없습니다.' }, 404);
+      return c.json({ entry: serializeUiCopyEntry({ ...entry, screen_key: screen.rows[0].screen_key, screen_label: screen.rows[0].display_name }) }, 201);
     } catch (error) {
-      if ((error as { code?: string }).code === '23505') return c.json({ error: '이미 사용 중인 변수명입니다.' }, 409);
+      if ((error as { code?: string }).code === '23505') return c.json({ error: '이 화면에서 이미 사용 중인 변수명입니다.' }, 409);
+      if ((error as { code?: string }).code === '23503') return c.json({ error: '소속 화면을 찾을 수 없습니다.' }, 404);
       throw error;
     }
   }
@@ -633,32 +805,34 @@ app.post('/api/admin/copy', async (c) => {
     const draftRevision = Number(body.draftRevision);
     const draftText = typeof body.draftText === 'string' ? body.draftText.trim() : '';
     const description = typeof body.description === 'string' ? body.description.trim() : '';
-    const scope = typeof body.scope === 'string' ? body.scope.trim() : '';
+    const screenId = Number(body.screenId);
     const locale = typeof body.locale === 'string' ? body.locale.trim() : '';
     const textFormat = body.textFormat === 'multiline' ? 'multiline' : body.textFormat === 'plain' ? 'plain' : null;
     const templateVariables = parseTemplateVariables(body.templateVariables ?? []);
     const maxLength = body.maxLength === null || body.maxLength === undefined || body.maxLength === '' ? null : Number(body.maxLength);
     const isActive = typeof body.isActive === 'boolean' ? body.isActive : null;
-    if (!Number.isSafeInteger(entryId) || entryId < 1 || !Number.isSafeInteger(draftRevision) || draftRevision < 1 || !scope || scope.length > 180 || !/^[a-z]{2}(?:-[A-Z]{2})?$/.test(locale) || description.length > 500 || !textFormat || !draftText || draftText.length > 5000 || templateVariables === null || isActive === null || (maxLength !== null && (!Number.isSafeInteger(maxLength) || maxLength < 1 || maxLength > 5000)) || (maxLength !== null && draftText.length > maxLength)) {
+    if (!Number.isSafeInteger(entryId) || entryId < 1 || !Number.isSafeInteger(screenId) || screenId < 1 || !Number.isSafeInteger(draftRevision) || draftRevision < 1 || !/^[a-z]{2}(?:-[A-Z]{2})?$/.test(locale) || description.length > 500 || !textFormat || !draftText || draftText.length > 5000 || templateVariables === null || isActive === null || (maxLength !== null && (!Number.isSafeInteger(maxLength) || maxLength < 1 || maxLength > 5000)) || (maxLength !== null && draftText.length > maxLength)) {
       return c.json({ error: '문구의 내용과 설정값을 확인해 주세요.' }, 400);
     }
     const updated = await pool.query<UiCopyEntryRow>(
       `UPDATE ui_copy_entries
-       SET scope = $2, locale = $3, description = $4, text_format = $5,
+       SET screen_id = $2, locale = $3, description = $4, text_format = $5,
            draft_text = $6, template_variables = $7, max_length = $8,
            is_active = $9, draft_revision = draft_revision + 1,
            draft_updated_by_user_id = $10, draft_updated_at = NOW(), updated_at = NOW()
        WHERE id = $1 AND draft_revision = $11
-       RETURNING id, copy_key, scope, locale, description, text_format, draft_text,
+       RETURNING id, screen_id, variable_name, locale, description, text_format, draft_text,
                  template_variables, max_length, draft_revision, is_active,
                  draft_updated_at, created_at`,
-      [entryId, scope, locale, description || null, textFormat, draftText, JSON.stringify(templateVariables), maxLength, isActive, user.id, draftRevision],
+      [entryId, screenId, locale, description || null, textFormat, draftText, JSON.stringify(templateVariables), maxLength, isActive, user.id, draftRevision],
     );
     if (!updated.rowCount) {
       const existing = await pool.query('SELECT 1 FROM ui_copy_entries WHERE id = $1', [entryId]);
       return c.json({ error: existing.rowCount ? '다른 관리자가 먼저 수정했습니다. 새로고침 후 다시 저장해 주세요.' : '문구를 찾을 수 없습니다.' }, existing.rowCount ? 409 : 404);
     }
-    return c.json({ entry: serializeUiCopyEntry(updated.rows[0]) });
+    const screen = await pool.query<{ screen_key: string; display_name: string }>('SELECT screen_key, display_name FROM ui_copy_screens WHERE id = $1', [screenId]);
+    if (!screen.rows[0]) return c.json({ error: '소속 화면을 찾을 수 없습니다.' }, 404);
+    return c.json({ entry: serializeUiCopyEntry({ ...updated.rows[0], screen_key: screen.rows[0].screen_key, screen_label: screen.rows[0].display_name }) });
   }
 
   if (action === 'create-publication' || action === 'restore-publication') {
