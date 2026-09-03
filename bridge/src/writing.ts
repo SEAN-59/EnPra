@@ -41,6 +41,14 @@ const task2Formats = [
   ['two_part', 7],
   ['causes_solutions', 6],
 ] as const;
+const foundationMaterialFormats = [
+  ['short_notice', 20],
+  ['simple_schedule', 18],
+  ['mini_table', 18],
+  ['mini_data_card', 16],
+  ['short_scenario', 16],
+  ['simple_sequence', 12],
+] as const;
 
 const skills = [
   ['t1_trend_description', '증가·감소 표현', 'task1'],
@@ -681,12 +689,12 @@ async function createQuestion(
       ? pickWeighted(task1Formats)
       : taskType === 'task2'
         ? pickWeighted(task2Formats)
-        : 'foundation_three_prompts';
+        : pickWeighted(foundationMaterialFormats);
   const materialGuide =
     taskType === 'task1'
       ? `자료는 반드시 세부 유형에 맞는 아래 JSON 구조로 작성하세요. 숫자는 문자열이 아닌 숫자로 넣고 단위는 material.unit에 따로 넣으세요. 이 데이터는 코드가 SVG로 정확히 그리므로, 설명문이 아닌 위치·라벨·연결 관계를 빠짐없이 입력해야 합니다.\nbar_chart 또는 line_chart: {\"title\":\"\",\"description\":\"\",\"unit\":\"%|millions|…\",\"categories\":[\"2010\",\"2015\"],\"series\":[{\"name\":\"\",\"data\":[12,18]}]}\npie_chart 또는 table: {\"title\":\"\",\"description\":\"\",\"unit\":\"%|…\",\"rows\":[{\"label\":\"\",\"value\":35}]}\nmap: {\"title\":\"\",\"description\":\"\",\"mapPanels\":[{\"label\":\"Before\",\"features\":[{\"type\":\"road|river|path|area|building|bridge|label|arrow\",\"label\":\"Road|Bridge|실제 명칭\",\"x\":20,\"y\":18,\"width\":20,\"height\":12,\"points\":[[10,20],[70,20]],\"color\":\"#38634f\"}]}]}. 좌표는 가로·세로 모두 0~100 범위이며, 모든 요소와 라벨은 캔버스를 넘지 않게 배치하세요. road와 bridge는 반드시 label을 넣으세요. road·river·path·bridge·arrow는 points, area·building·label은 x/y와 필요시 width/height를 사용하세요. 도로는 실제 연결 관계가 분명할 때만 넣고, 교차·연결 위치를 points로 정확히 표현하세요. 다리는 반드시 type=bridge로 지정하세요. 비교 문제면 Before와 After를 모두 넣으세요.\ndiagram: {\"title\":\"\",\"description\":\"\",\"steps\":[{\"label\":\"\",\"description\":\"\"}]}. steps는 실제 공정 순서대로 입력하고, 각 단계의 핵심 변화가 보이도록 짧고 정확하게 작성하세요.\n자료는 문제 지시문과 모순되지 않도록 하고 분석 가능한 핵심 특징과 비교가 나타나게 만드세요.`
       : taskType === 'foundation'
-        ? `FOUNDATION은 짧고 명확한 영어 자료 하나를 제시한 뒤, 그 자료를 바탕으로 답할 수 있는 아주 짧은 질문 3개를 만드세요. material은 반드시 {"title":"","content":"짧은 영어 자료","questions":[{"prompt":"질문 1"},{"prompt":"질문 2"},{"prompt":"질문 3"}]} 형태로 반환하세요. questions는 정확히 3개여야 하며, 각 질문은 학습자가 영어 한 문장으로 답할 수 있어야 합니다. 연속된 3문장 작문, 긴 단락, 빈칸 문제를 내지 마세요. solutionContext에는 각 질문별 정답에 포함될 핵심 사실을 expectedAnswers 배열로 넣으세요.`
+        ? `FOUNDATION은 짧고 명확한 영어 자료 하나를 제시한 뒤, 그 자료를 바탕으로 답할 수 있는 아주 짧은 질문 3개를 만드세요. 이번 자료 유형은 ${format}입니다. 허용 유형은 short_notice(짧은 공지), simple_schedule(간단 일정표), mini_table(3~5행 표), mini_data_card(숫자 2~4개가 있는 카드), short_scenario(짧은 상황 설명), simple_sequence(2~3단계 순서 설명)뿐입니다. material은 반드시 {"type":"${format}","title":"","content":"짧은 영어 자료","questions":[{"prompt":"질문 1"},{"prompt":"질문 2"},{"prompt":"질문 3"}]} 형태로 반환하세요. questions는 정확히 3개여야 하며, 각 질문은 학습자가 영어 한 문장으로 답할 수 있어야 합니다. 지도, 설계도, 복잡한 차트, 그래프, 복잡한 다이어그램, 장문 지문, 연속된 3문장 작문, 빈칸 문제를 내지 마세요. solutionContext에는 각 질문별 정답에 포함될 핵심 사실을 expectedAnswers 배열로 넣으세요.`
         : 'Task 2는 자료 없이 material을 {}로 반환하세요.';
   const requestedSkills = requiredSkillCodes.filter((code) =>
     skills.some(([skillCode]) => skillCode === code),
