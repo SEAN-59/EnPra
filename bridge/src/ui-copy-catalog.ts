@@ -4831,6 +4831,45 @@ export const UI_COPY_ENTRIES: UiCopyEntrySeed[] = [
     "draftText": "힌트와 피드백을 사용해 필요한 Task를 학습합니다.",
     "description": "components/writing-client.tsx에서 사용하는 고정 문구",
     "textFormat": "plain"
+  },
+  {
+    "screenKey": "manage.copy",
+    "variableName": "draft_screen_filter_label",
+    "sourceText": "소속 화면",
+    "draftText": "소속 화면",
+    "description": "components/manage-copy-client.tsx 문구 초안 목록 필터의 라벨",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "manage.copy",
+    "variableName": "draft_screen_filter_all",
+    "sourceText": "전체 화면",
+    "draftText": "전체 화면",
+    "description": "components/manage-copy-client.tsx 문구 초안 목록 필터의 전체 선택값",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "manage.copy",
+    "variableName": "draft_screen_filter_count",
+    "sourceText": "{count}개 문구 표시",
+    "draftText": "{count}개 문구 표시",
+    "description": "components/manage-copy-client.tsx 문구 초안 목록 필터의 결과 수",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "manage.copy",
+    "variableName": "draft_screen_filter_empty_title",
+    "sourceText": "이 화면에 등록된 문구가 없습니다.",
+    "draftText": "이 화면에 등록된 문구가 없습니다.",
+    "description": "components/manage-copy-client.tsx 선택한 화면에 문구가 없을 때 제목",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "manage.copy",
+    "variableName": "draft_screen_filter_empty_description",
+    "sourceText": "다른 소속 화면을 선택하거나 새 문구를 등록하세요.",
+    "draftText": "다른 소속 화면을 선택하거나 새 문구를 등록하세요.",
+    "description": "components/manage-copy-client.tsx 선택한 화면에 문구가 없을 때 안내",
+    "textFormat": "plain"
   }
 ];
-
