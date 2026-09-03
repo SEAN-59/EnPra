@@ -64,9 +64,9 @@ const assessmentExpectations: Record<
   foundation: {
     label: 'FOUNDATION',
     task1:
-      '자료에서 사실을 찾아 정확한 기초 문장 3개를 만든다. 완전한 IELTS 답안이나 Band 판정은 하지 않는다.',
+      '짧은 자료를 읽고 3개의 간단한 질문에 각각 정확한 기초 문장으로 답한다. 완전한 IELTS 답안이나 Band 판정은 하지 않는다.',
     task2:
-      '의견, 이유, 예시를 기초 문장으로 정확히 연결한다. 완전한 IELTS 답안이나 Band 판정은 하지 않는다.',
+      '짧은 자료 또는 주제에 대한 3개의 간단한 질문에 각각 기초 문장으로 답한다. 완전한 IELTS 답안이나 Band 판정은 하지 않는다.',
   },
   '5.0A': {
     label: '5.0A',
@@ -156,7 +156,7 @@ const assessmentExpectations: Record<
 
 const stageQualityControls: Record<string, string> = {
   foundation:
-    '유연하게 채점한다. 단어·표현 반복은 감점하지 않으며 고급 어휘, paraphrase, 복문을 요구하지 않는다. 자료 또는 주제에 맞는 완전한 기초 문장 3개와 기본 주어-동사 일치, 핵심 시제·전치사 오류가 의미를 막지 않는지만 본다. 연결어는 없어도 되고, 한두 개의 기본 연결만 정확하면 충분하다.',
+    '유연하게 채점한다. 단어·표현 반복은 감점하지 않으며 고급 어휘, paraphrase, 복문을 요구하지 않는다. 자료의 각 질문에 맞는 완전한 기초 문장 3개와 기본 주어-동사 일치, 핵심 시제·전치사 오류가 의미를 막지 않는지만 본다. 세 답을 연결된 단락으로 만들 필요는 없다.',
   '5.0A':
     '템플릿 학습 단계다. 같은 표현·문장 틀의 반복은 허용한다. 고급 어휘나 복문을 요구하지 않고, 수치·변화·의견 표현의 기본 형태가 정확한지, 단순문이 완전한지만 우선 평가한다. 기본 연결어 하나를 정확히 쓰면 충분하다.',
   '5.0B':
@@ -681,15 +681,17 @@ async function createQuestion(
       ? pickWeighted(task1Formats)
       : taskType === 'task2'
         ? pickWeighted(task2Formats)
-        : 'foundation_drill';
+        : 'foundation_three_prompts';
   const materialGuide =
     taskType === 'task1'
       ? `자료는 반드시 세부 유형에 맞는 아래 JSON 구조로 작성하세요. 숫자는 문자열이 아닌 숫자로 넣고 단위는 material.unit에 따로 넣으세요. 이 데이터는 코드가 SVG로 정확히 그리므로, 설명문이 아닌 위치·라벨·연결 관계를 빠짐없이 입력해야 합니다.\nbar_chart 또는 line_chart: {\"title\":\"\",\"description\":\"\",\"unit\":\"%|millions|…\",\"categories\":[\"2010\",\"2015\"],\"series\":[{\"name\":\"\",\"data\":[12,18]}]}\npie_chart 또는 table: {\"title\":\"\",\"description\":\"\",\"unit\":\"%|…\",\"rows\":[{\"label\":\"\",\"value\":35}]}\nmap: {\"title\":\"\",\"description\":\"\",\"mapPanels\":[{\"label\":\"Before\",\"features\":[{\"type\":\"road|river|path|area|building|bridge|label|arrow\",\"label\":\"Road|Bridge|실제 명칭\",\"x\":20,\"y\":18,\"width\":20,\"height\":12,\"points\":[[10,20],[70,20]],\"color\":\"#38634f\"}]}]}. 좌표는 가로·세로 모두 0~100 범위이며, 모든 요소와 라벨은 캔버스를 넘지 않게 배치하세요. road와 bridge는 반드시 label을 넣으세요. road·river·path·bridge·arrow는 points, area·building·label은 x/y와 필요시 width/height를 사용하세요. 도로는 실제 연결 관계가 분명할 때만 넣고, 교차·연결 위치를 points로 정확히 표현하세요. 다리는 반드시 type=bridge로 지정하세요. 비교 문제면 Before와 After를 모두 넣으세요.\ndiagram: {\"title\":\"\",\"description\":\"\",\"steps\":[{\"label\":\"\",\"description\":\"\"}]}. steps는 실제 공정 순서대로 입력하고, 각 단계의 핵심 변화가 보이도록 짧고 정확하게 작성하세요.\n자료는 문제 지시문과 모순되지 않도록 하고 분석 가능한 핵심 특징과 비교가 나타나게 만드세요.`
-      : 'Task 2와 FOUNDATION은 자료 없이 material을 {}로 반환하세요.';
+      : taskType === 'foundation'
+        ? `FOUNDATION은 짧고 명확한 영어 자료 하나를 제시한 뒤, 그 자료를 바탕으로 답할 수 있는 아주 짧은 질문 3개를 만드세요. material은 반드시 {"title":"","content":"짧은 영어 자료","questions":[{"prompt":"질문 1"},{"prompt":"질문 2"},{"prompt":"질문 3"}]} 형태로 반환하세요. questions는 정확히 3개여야 하며, 각 질문은 학습자가 영어 한 문장으로 답할 수 있어야 합니다. 연속된 3문장 작문, 긴 단락, 빈칸 문제를 내지 마세요. solutionContext에는 각 질문별 정답에 포함될 핵심 사실을 expectedAnswers 배열로 넣으세요.`
+        : 'Task 2는 자료 없이 material을 {}로 반환하세요.';
   const requestedSkills = requiredSkillCodes.filter((code) =>
     skills.some(([skillCode]) => skillCode === code),
   );
-  const prompt = `EnPra IELTS Writing 문제를 하나 만드세요. JSON만 반환하세요.\n유형: ${taskType}; 세부 유형: ${format}; 난이도: ${difficulty}; 용도: ${purpose}; 연습 형식: ${exerciseType}.\nTask 1은 객관적 자료 분석만, Task 2는 논리적 에세이만 만드세요. FOUNDATION은 영어 3문장 연습 문제입니다.\n${materialGuide}\n{\"title\":\"\",\"prompt\":\"영문 문제 지시문\",\"material\":{},\"solutionContext\":{\"keyFacts\":[\"\"],\"commonMistakes\":[\"\"]},\"skills\":[{\"code\":\"t1_overview\",\"importance\":\"primary\",\"weight\":0.5}]}`;
+  const prompt = `EnPra IELTS Writing 문제를 하나 만드세요. JSON만 반환하세요.\n유형: ${taskType}; 세부 유형: ${format}; 난이도: ${difficulty}; 용도: ${purpose}; 연습 형식: ${exerciseType}.\nTask 1은 객관적 자료 분석만, Task 2는 논리적 에세이만 만드세요. FOUNDATION은 하나의 짧은 자료와 그 자료를 읽고 각각 답하는 독립 질문 3개로 구성합니다.\n${materialGuide}\n{\"title\":\"\",\"prompt\":\"영문 문제 지시문\",\"material\":{},\"solutionContext\":{\"keyFacts\":[\"\"],\"expectedAnswers\":[\"\"],\"commonMistakes\":[\"\"]},\"skills\":[{\"code\":\"t1_overview\",\"importance\":\"primary\",\"weight\":0.5}]}`;
   const generated = jsonObject(
     (
       await codex
@@ -909,7 +911,7 @@ async function chooseReinforcementQuestion(
     codex,
     user,
     fallbackTask,
-    fallbackTask === 'foundation' ? 'foundation_guided' : fallbackTask,
+    fallbackTask === 'foundation' ? 'foundation_three_prompts' : fallbackTask,
     difficulty,
     'main_learning',
     focus ? [focus.code] : [],
@@ -1542,20 +1544,8 @@ export function registerWritingRoutes(
           ? [
               {
                 task: 'foundation',
-                exercise: 'foundation_guided',
-                purpose: 'foundation_guided',
-                hint: sessionType === 'learning',
-              },
-              {
-                task: 'foundation',
-                exercise: 'foundation_guided',
-                purpose: 'foundation_guided',
-                hint: sessionType === 'learning',
-              },
-              {
-                task: 'foundation',
-                exercise: 'foundation_open',
-                purpose: 'foundation_open',
+                exercise: 'foundation_three_prompts',
+                purpose: 'foundation_three_prompts',
                 hint: sessionType === 'learning',
               },
             ]
@@ -1662,7 +1652,7 @@ export function registerWritingRoutes(
               String(profile.current_internal_stage),
             )
           : null;
-        const count = questionTask === 'foundation' ? 3 : null;
+        const count = null;
         const targetWords = targetWordCountFor(
           String(profile.current_internal_stage),
           questionTask,
@@ -1802,7 +1792,11 @@ export function registerWritingRoutes(
           ? qualityControlsFor(String(item.internal_stage_snapshot))
           : '이 세션이 시작된 당시의 단계별 채점 기준을 유지한다.';
       const qualityControls = `${baseQualityControls}\n문단 구조 가이드 사용: ${structureGuidePenalty > 0 ? '예' : '아니오'}. 문단별 입력: ${JSON.stringify(answerSections)}. 문단 구조 가이드를 사용했더라도 각 문단이 해당 역할을 수행하는지는 답안 품질 기준으로 평가한다. 가이드 사용에 따른 최종 점수 감점은 서버가 별도로 처리한다.`;
-      const prompt = `EnPra IELTS Writing 답안을 채점하세요. JSON만 반환하세요. 이것은 공식 IELTS 점수표 자체가 아니라, 공식 IELTS Writing public band descriptors의 4개 축을 내부 학습 단계에 적용한 0~100 수행 점수입니다.\n현재 내부 단계: ${item.internal_stage_snapshot}\n이 단계의 과제 기대치: ${stageExpectation}\n이 단계의 표현·응집·문법 기준: ${qualityControls}\n과제: ${task}; 핵심 과제 축: ${taskCriterion}; 목표 최소 분량: ${targetWords > 0 ? `${targetWords}단어` : '기초 3문장'}.\n문제: ${item.prompt}\n자료: ${JSON.stringify(item.material_json)}\n내부 정답 정보: ${JSON.stringify(item.solution_context)}\n사용자 답안: ${answer}\n평가 스킬: ${skillRows.rows.map((row) => row.skill_code).join(', ')}\n\n채점 원칙:\n1. 같은 답안이라도 현재 내부 단계의 기대치로 평가한다. 5.0C에서는 Band 5 목표를 충족하면 높은 점수를 받을 수 있지만, 7.0A에서는 Band 7 목표를 충족해야 같은 높은 점수를 받을 수 있다.\n2. ${task === 'task1' ? '자료를 정확히 읽고 Overview·핵심 특징·비교를 평가한다.' : task === 'task2' ? '질문의 모든 부분, 명확한 입장, 근거의 발전을 평가한다.' : '기초 문장의 정확성·연결·과제 충족을 평가한다.'}\n3. 분량이 목표보다 짧으면 ${taskCriterion}에 반영한다. 다만 단어 수만으로 점수를 높게 주지 말고 내용의 질과 정확성을 우선한다.\n4. Coherence & Cohesion, Lexical Resource, Grammatical Range & Accuracy를 각각 독립적으로 평가한다. 힌트 감점은 서버가 별도로 처리하므로 여기서는 감점하지 않는다.\n5. rawScore는 아래 4개 기준 점수의 산술평균을 반올림해 작성한다.\n\n반드시 {\"rawScore\":0,\"resultLabel\":\"pass|partial|needs_practice\",\"errorCount\":0,\"criteria\":{\"taskAchievementOrResponse\":0,\"taskAchievementOrResponseEvidence\":\"\",\"coherenceCohesion\":0,\"coherenceCohesionEvidence\":\"\",\"lexicalResource\":0,\"lexicalResourceEvidence\":\"\",\"grammaticalRangeAccuracy\":0,\"grammaticalRangeAccuracyEvidence\":\"\"},\"feedback\":{\"correctedAnswer\":\"\",\"errors\":[{\"original\":\"\",\"correction\":\"\",\"reason\":\"\"}],\"synonyms\":[\"\"],\"usefulExpressions\":[\"\"],\"improvedAnswer\":\"\",\"keyLearning\":\"\",\"nextFocus\":\"\"},\"skills\":[{\"code\":\"\",\"qualityScore\":0,\"evidenceSummary\":\"\"}]} 형식으로 반환하세요.`;
+      const foundationInstruction =
+        task === 'foundation'
+          ? '자료의 질문 3개에 각각 답했는지와 각 답이 해당 질문의 핵심 사실에 맞는지 우선 평가한다. 세 답을 하나의 단락으로 자연스럽게 연결할 필요는 없고, 각 답은 한 문장으로도 충분하다.'
+          : '해당 없음';
+      const prompt = `EnPra IELTS Writing 답안을 채점하세요. JSON만 반환하세요. 이것은 공식 IELTS 점수표 자체가 아니라, 공식 IELTS Writing public band descriptors의 4개 축을 내부 학습 단계에 적용한 0~100 수행 점수입니다.\n현재 내부 단계: ${item.internal_stage_snapshot}\n이 단계의 과제 기대치: ${stageExpectation}\n이 단계의 표현·응집·문법 기준: ${qualityControls}\n과제: ${task}; 핵심 과제 축: ${taskCriterion}; 목표 최소 분량: ${targetWords > 0 ? `${targetWords}단어` : '짧은 질문 3개에 각각 답하기'}.\n문제: ${item.prompt}\n자료: ${JSON.stringify(item.material_json)}\n내부 정답 정보: ${JSON.stringify(item.solution_context)}\n사용자 답안: ${answer}\n평가 스킬: ${skillRows.rows.map((row) => row.skill_code).join(', ')}\n\n채점 원칙:\n1. 같은 답안이라도 현재 내부 단계의 기대치로 평가한다. 5.0C에서는 Band 5 목표를 충족하면 높은 점수를 받을 수 있지만, 7.0A에서는 Band 7 목표를 충족해야 같은 높은 점수를 받을 수 있다.\n2. ${task === 'task1' ? '자료를 정확히 읽고 Overview·핵심 특징·비교를 평가한다.' : task === 'task2' ? '질문의 모든 부분, 명확한 입장, 근거의 발전을 평가한다.' : '기초 문장의 정확성·연결·과제 충족을 평가한다.'}\n3. FOUNDATION 추가 원칙: ${foundationInstruction}\n4. 분량이 목표보다 짧으면 ${taskCriterion}에 반영한다. 다만 단어 수만으로 점수를 높게 주지 말고 내용의 질과 정확성을 우선한다.\n5. Coherence & Cohesion, Lexical Resource, Grammatical Range & Accuracy를 각각 독립적으로 평가한다. 힌트 감점은 서버가 별도로 처리하므로 여기서는 감점하지 않는다.\n6. rawScore는 아래 4개 기준 점수의 산술평균을 반올림해 작성한다.\n\n반드시 {\"rawScore\":0,\"resultLabel\":\"pass|partial|needs_practice\",\"errorCount\":0,\"criteria\":{\"taskAchievementOrResponse\":0,\"taskAchievementOrResponseEvidence\":\"\",\"coherenceCohesion\":0,\"coherenceCohesionEvidence\":\"\",\"lexicalResource\":0,\"lexicalResourceEvidence\":\"\",\"grammaticalRangeAccuracy\":0,\"grammaticalRangeAccuracyEvidence\":\"\"},\"feedback\":{\"correctedAnswer\":\"\",\"errors\":[{\"original\":\"\",\"correction\":\"\",\"reason\":\"\"}],\"synonyms\":[\"\"],\"usefulExpressions\":[\"\"],\"improvedAnswer\":\"\",\"keyLearning\":\"\",\"nextFocus\":\"\"},\"skills\":[{\"code\":\"\",\"qualityScore\":0,\"evidenceSummary\":\"\"}]} 형식으로 반환하세요.`;
       const evaluation = jsonObject(
         (await codex.get(user.id).runLearningPrompt(prompt)).text,
       );

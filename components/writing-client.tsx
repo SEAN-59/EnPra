@@ -841,6 +841,7 @@ export function WritingSessionClient({ sessionId }: { sessionId: number }) {
   const [answerSections, setAnswerSections] = useState<
     Array<{ label: string; text: string }>
   >([]);
+  const [foundationAnswers, setFoundationAnswers] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [structureGuideBusy, setStructureGuideBusy] = useState(false);
   const [error, setError] = useState('');
@@ -864,12 +865,32 @@ export function WritingSessionClient({ sessionId }: { sessionId: number }) {
       : [];
   const structureGuideAvailable = isLearning && structureLabels.length > 0;
   const structureGuideUsed = Boolean(current?.structureGuideUsed);
+  const foundationQuestions = Array.isArray(current?.question?.material?.questions)
+    ? current.question.material.questions
+        .map((question: any) =>
+          typeof question?.prompt === 'string' ? question.prompt.trim() : '',
+        )
+        .filter(Boolean)
+        .slice(0, 3)
+    : [];
+  const isFoundationDrill =
+    current?.taskType === 'foundation' && foundationQuestions.length === 3;
   const submittedAnswer = structureGuideUsed
     ? answerSections
         .map((section) => section.text.trim())
         .filter(Boolean)
         .join('\n\n')
-    : answer;
+    : isFoundationDrill
+      ? foundationQuestions
+          .map(
+            (question: string, index: number) =>
+              `Question ${index + 1}: ${question}\nAnswer ${index + 1}: ${(foundationAnswers[index] ?? '').trim()}`,
+          )
+          .join('\n\n')
+      : answer;
+  const hasRequiredAnswer = isFoundationDrill
+    ? foundationAnswers.length === 3 && foundationAnswers.every((value) => value.trim())
+    : Boolean(submittedAnswer.trim());
   useEffect(() => {
     if (!current) return;
     if (current.structureGuideUsed) {
@@ -881,6 +902,11 @@ export function WritingSessionClient({ sessionId }: { sessionId: number }) {
       return;
     }
     setAnswerSections([]);
+    setFoundationAnswers(
+      Array.isArray(current.question?.material?.questions)
+        ? Array(3).fill('')
+        : [],
+    );
   }, [current?.id, current?.structureGuideUsed]); // eslint-disable-line react-hooks/exhaustive-deps
   const reveal = (hintId: number) => {
     if (
@@ -908,7 +934,7 @@ export function WritingSessionClient({ sessionId }: { sessionId: number }) {
     );
   };
   const submit = async () => {
-    if (!submittedAnswer.trim()) return;
+    if (!hasRequiredAnswer) return;
     setBusy(true);
     setError('');
     try {
@@ -923,6 +949,7 @@ export function WritingSessionClient({ sessionId }: { sessionId: number }) {
       setFeedback(result.result);
       setAnswer('');
       setAnswerSections([]);
+      setFoundationAnswers([]);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : '채점하지 못했습니다.');
     } finally {
@@ -1088,10 +1115,30 @@ export function WritingSessionClient({ sessionId }: { sessionId: number }) {
         </button>
       </div>
       {material && Object.keys(material).length > 0 && (
-        <WritingMaterial
-          format={current.question.questionFormat}
-          material={material}
-        />
+        current.taskType === 'foundation' ? (
+          <section className="mt-5 rounded-3xl border border-[#dcd6ca] bg-[#f7faf7] p-6 shadow-[0_12px_32px_rgba(35,44,43,0.04)] sm:p-7">
+            <p className="text-[11px] font-bold tracking-[.16em] text-[#38634f]">
+              SHORT SOURCE MATERIAL
+            </p>
+            {typeof material.title === 'string' && material.title && (
+              <h3 className="mt-2 font-serif text-2xl text-[#24333a]">
+                {material.title}
+              </h3>
+            )}
+            <p className="mt-3 whitespace-pre-wrap text-base leading-7 text-[#314047]">
+              {typeof material.content === 'string'
+                ? material.content
+                : typeof material.description === 'string'
+                  ? material.description
+                  : ''}
+            </p>
+          </section>
+        ) : (
+          <WritingMaterial
+            format={current.question.questionFormat}
+            material={material}
+          />
+        )
       )}
       <section className="mt-5 rounded-3xl border border-[#dcd6ca] bg-[#fffdf8] p-6 shadow-[0_12px_32px_rgba(35,44,43,0.04)] sm:p-7">
         <div className="flex items-start gap-4 border-b border-[#ece5da] pb-5">
@@ -1110,11 +1157,15 @@ export function WritingSessionClient({ sessionId }: { sessionId: number }) {
         <p className="mt-5 whitespace-pre-wrap text-base leading-7 text-[#314047]">
           {current.question.prompt}
         </p>
-        {current.targetSentenceCount && (
+        {isFoundationDrill ? (
+          <p className="mt-4 rounded-xl bg-[#fff8f4] px-4 py-3 text-sm text-[#a45138]">
+            아래 3개 질문에 각각 짧은 영어 문장으로 답해 보세요.
+          </p>
+        ) : current.targetSentenceCount ? (
           <p className="mt-4 rounded-xl bg-[#fff8f4] px-4 py-3 text-sm text-[#a45138]">
             영어 {current.targetSentenceCount}문장을 작성해 보세요.
           </p>
-        )}
+        ) : null}
         {isLearning && session.hints?.length > 0 && (
           <div className="hidden">
             {session.hints.map((hint: any) => (
@@ -1145,7 +1196,37 @@ export function WritingSessionClient({ sessionId }: { sessionId: number }) {
               onUse: useStructureGuide,
             }}
           />
-          {structureGuideUsed ? (
+          {isFoundationDrill ? (
+            <div className="mt-3 space-y-4">
+              {foundationQuestions.map((question: string, index: number) => (
+                <label
+                  key={question}
+                  className="block rounded-2xl border border-[#ded7ca] bg-[#fffefa] p-4"
+                >
+                  <span className="text-xs font-bold tracking-[.12em] text-[#d76a47]">
+                    QUESTION {index + 1}
+                  </span>
+                  <span className="mt-2 block text-sm font-semibold leading-6 text-[#314047]">
+                    {question}
+                  </span>
+                  <textarea
+                    value={foundationAnswers[index] ?? ''}
+                    onChange={(event) =>
+                      setFoundationAnswers((previous) =>
+                        Array.from({ length: 3 }, (_, answerIndex) =>
+                          answerIndex === index
+                            ? event.target.value
+                            : previous[answerIndex] ?? '',
+                        ),
+                      )
+                    }
+                    placeholder="영어 한 문장으로 답하세요."
+                    className="mt-3 min-h-24 w-full resize-y rounded-xl border border-[#d7cfc2] bg-[#fffdf8] p-3 text-base leading-7 outline-none focus:border-[#d76a47]"
+                  />
+                </label>
+              ))}
+            </div>
+          ) : structureGuideUsed ? (
             <div className="mt-3 space-y-4">
               <div className="rounded-xl border border-[#f0cbbb] bg-[#fff8f4] px-4 py-3 text-sm leading-6 text-[#8a4a37]">
                 문단 구조 가이드를 사용 중입니다. 문단별 역할을 확인하며 작성해 보세요.
@@ -1195,7 +1276,7 @@ export function WritingSessionClient({ sessionId }: { sessionId: number }) {
         </div>
         {error && <p className="mt-3 text-sm text-[#c34f32]">{error}</p>}
         <Button
-          disabled={busy || structureGuideBusy || !submittedAnswer.trim()}
+          disabled={busy || structureGuideBusy || !hasRequiredAnswer}
           onClick={submit}
           className="mt-5 w-full"
         >
