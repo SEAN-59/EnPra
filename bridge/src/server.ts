@@ -7,6 +7,7 @@ import { cors } from 'hono/cors';
 import { Pool, type QueryResult } from 'pg';
 
 import { CodexRegistry } from './codex.js';
+import { UI_COPY_ENTRIES, UI_COPY_SCREENS } from './ui-copy-catalog.js';
 import { initializeWritingDatabase, registerWritingRoutes } from './writing.js';
 
 type UserContext = { id: string; displayName: string };
@@ -44,6 +45,7 @@ type UiCopyEntryRow = {
   locale: string;
   description: string | null;
   text_format: 'plain' | 'multiline';
+  source_text: string;
   draft_text: string;
   template_variables: unknown;
   max_length: number | null;
@@ -79,6 +81,7 @@ type UiCopySnapshotInput = {
   screen_key: string;
   variable_name: string;
   locale: string;
+  source_text: string;
   text: string;
   text_format: 'plain' | 'multiline';
   template_variables: unknown;
@@ -263,6 +266,7 @@ async function initializeDatabase() {
       description TEXT,
       text_format TEXT NOT NULL DEFAULT 'plain'
         CHECK (text_format IN ('plain', 'multiline')),
+      source_text TEXT NOT NULL,
       draft_text TEXT NOT NULL,
       template_variables JSONB NOT NULL DEFAULT '[]'::jsonb,
       max_length INTEGER CHECK (max_length IS NULL OR max_length > 0),
@@ -275,6 +279,7 @@ async function initializeDatabase() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       CHECK (variable_name ~ '^[a-z][a-z0-9_]*$'),
       CHECK (char_length(trim(draft_text)) > 0),
+      CHECK (char_length(trim(source_text)) > 0),
       UNIQUE (screen_id, variable_name)
     );
 
@@ -305,6 +310,7 @@ async function initializeDatabase() {
       variable_name TEXT NOT NULL,
       entry_id BIGINT REFERENCES ui_copy_entries(id) ON DELETE SET NULL,
       locale TEXT NOT NULL,
+      source_text TEXT NOT NULL,
       text TEXT NOT NULL,
       text_format TEXT NOT NULL CHECK (text_format IN ('plain', 'multiline')),
       template_variables JSONB NOT NULL DEFAULT '[]'::jsonb,
@@ -314,9 +320,14 @@ async function initializeDatabase() {
 
     ALTER TABLE ui_copy_entries ADD COLUMN IF NOT EXISTS screen_id BIGINT REFERENCES ui_copy_screens(id) ON DELETE RESTRICT;
     ALTER TABLE ui_copy_entries ADD COLUMN IF NOT EXISTS variable_name TEXT;
+    ALTER TABLE ui_copy_entries ADD COLUMN IF NOT EXISTS source_text TEXT;
     ALTER TABLE ui_copy_publication_items ADD COLUMN IF NOT EXISTS screen_id BIGINT REFERENCES ui_copy_screens(id) ON DELETE SET NULL;
     ALTER TABLE ui_copy_publication_items ADD COLUMN IF NOT EXISTS screen_key TEXT;
     ALTER TABLE ui_copy_publication_items ADD COLUMN IF NOT EXISTS variable_name TEXT;
+    ALTER TABLE ui_copy_publication_items ADD COLUMN IF NOT EXISTS source_text TEXT;
+
+    UPDATE ui_copy_entries SET source_text = draft_text WHERE source_text IS NULL;
+    UPDATE ui_copy_publication_items SET source_text = text WHERE source_text IS NULL;
 
     DO $$
     BEGIN
@@ -361,6 +372,7 @@ async function initializeDatabase() {
     ALTER TABLE ui_copy_entries DROP COLUMN IF EXISTS scope;
     ALTER TABLE ui_copy_entries ALTER COLUMN screen_id SET NOT NULL;
     ALTER TABLE ui_copy_entries ALTER COLUMN variable_name SET NOT NULL;
+    ALTER TABLE ui_copy_entries ALTER COLUMN source_text SET NOT NULL;
     ALTER TABLE ui_copy_entries DROP CONSTRAINT IF EXISTS ui_copy_entries_screen_variable_unique;
     ALTER TABLE ui_copy_entries ADD CONSTRAINT ui_copy_entries_screen_variable_unique UNIQUE (screen_id, variable_name);
 
@@ -369,6 +381,7 @@ async function initializeDatabase() {
     ALTER TABLE ui_copy_publication_items DROP COLUMN IF EXISTS scope;
     ALTER TABLE ui_copy_publication_items ALTER COLUMN screen_key SET NOT NULL;
     ALTER TABLE ui_copy_publication_items ALTER COLUMN variable_name SET NOT NULL;
+    ALTER TABLE ui_copy_publication_items ALTER COLUMN source_text SET NOT NULL;
     ALTER TABLE ui_copy_publication_items ADD CONSTRAINT ui_copy_publication_items_pkey PRIMARY KEY (publication_id, screen_key, variable_name);
 
     CREATE INDEX IF NOT EXISTS ui_copy_entries_screen_active_idx
@@ -378,22 +391,42 @@ async function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS ui_copy_publication_items_screen_idx
       ON ui_copy_publication_items (publication_id, screen_key, locale, variable_name);
   `);
-  await pool.query(`
-    INSERT INTO ui_copy_screens (screen_key, display_name, route_path, sort_order)
-    VALUES ('manage.copy', 'MANAGE 문구 관리', '/admin', 9_000)
-    ON CONFLICT (screen_key) DO NOTHING;
-
-    INSERT INTO ui_copy_entries (screen_id, variable_name, description, draft_text)
-    SELECT id, 'title', 'MANAGE 화면의 정적 문구 관리 제목', '서비스 문구 관리'
-    FROM ui_copy_screens WHERE screen_key = 'manage.copy'
-    ON CONFLICT (screen_id, variable_name) DO NOTHING;
-
-    INSERT INTO ui_copy_entries (screen_id, variable_name, description, draft_text)
-    SELECT id, 'description', 'MANAGE 화면의 정적 문구 관리 설명', '문구는 소속 화면 아래에서 관리합니다.'
-    FROM ui_copy_screens WHERE screen_key = 'manage.copy'
-    ON CONFLICT (screen_id, variable_name) DO NOTHING;
-  `);
+  await syncUiCopyCatalog(pool);
   await initializeWritingDatabase(pool);
+}
+
+async function syncUiCopyCatalog(database: Pool) {
+  const client = await database.connect();
+  try {
+    await client.query('BEGIN');
+    for (const screen of UI_COPY_SCREENS) {
+      await client.query(
+        `INSERT INTO ui_copy_screens (screen_key, display_name, route_path, sort_order)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (screen_key) DO NOTHING`,
+        [screen.screenKey, screen.displayName, screen.routePath, screen.sortOrder],
+      );
+    }
+    for (const entry of UI_COPY_ENTRIES) {
+      await client.query(
+        `INSERT INTO ui_copy_entries
+          (screen_id, variable_name, description, text_format, source_text, draft_text)
+         SELECT id, $2, $3, $4, $5, $6
+         FROM ui_copy_screens
+         WHERE screen_key = $1
+         ON CONFLICT (screen_id, variable_name) DO UPDATE
+         SET source_text = EXCLUDED.source_text,
+             updated_at = NOW()`,
+        [entry.screenKey, entry.variableName, entry.description, entry.textFormat, entry.sourceText, entry.draftText],
+      );
+    }
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 function serializeVocabularyList(row: VocabularyListRow) {
@@ -459,6 +492,7 @@ function serializeUiCopyEntry(row: UiCopyEntryRow) {
     locale: row.locale,
     description: row.description,
     textFormat: row.text_format,
+    sourceText: row.source_text,
     draftText: row.draft_text,
     templateVariables: Array.isArray(row.template_variables) ? row.template_variables : [],
     maxLength: row.max_length,
@@ -520,7 +554,7 @@ async function createUiCopyPublication(userId: string, note: string | null, rest
     await client.query('BEGIN');
     if (restoreFromPublicationId) {
       const source = await client.query<UiCopySnapshotInput>(
-        `SELECT screen_id, screen_key, variable_name, locale, text, text_format, template_variables, draft_revision, entry_id
+        `SELECT screen_id, screen_key, variable_name, locale, source_text, text, text_format, template_variables, draft_revision, entry_id
          FROM ui_copy_publication_items
          WHERE publication_id = $1
          ORDER BY screen_key ASC, locale ASC, variable_name ASC`,
@@ -531,7 +565,7 @@ async function createUiCopyPublication(userId: string, note: string | null, rest
     } else {
       const source = await client.query<UiCopySnapshotInput>(
         `SELECT entry.id AS entry_id, entry.screen_id, screen.screen_key, entry.variable_name,
-                entry.locale, entry.draft_text AS text, entry.text_format, entry.template_variables, entry.draft_revision
+                entry.locale, entry.source_text, entry.draft_text AS text, entry.text_format, entry.template_variables, entry.draft_revision
          FROM ui_copy_entries entry
          JOIN ui_copy_screens screen ON screen.id = entry.screen_id
          WHERE entry.is_active = TRUE AND screen.is_active = TRUE
@@ -551,9 +585,9 @@ async function createUiCopyPublication(userId: string, note: string | null, rest
     for (const item of snapshot) {
       await client.query(
         `INSERT INTO ui_copy_publication_items
-          (publication_id, screen_id, screen_key, variable_name, entry_id, locale, text, text_format, template_variables, draft_revision)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-        [publication.id, item.screen_id, item.screen_key, item.variable_name, item.entry_id, item.locale, item.text, item.text_format, JSON.stringify(item.template_variables ?? []), item.draft_revision],
+          (publication_id, screen_id, screen_key, variable_name, entry_id, locale, source_text, text, text_format, template_variables, draft_revision)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+        [publication.id, item.screen_id, item.screen_key, item.variable_name, item.entry_id, item.locale, item.source_text, item.text, item.text_format, JSON.stringify(item.template_variables ?? []), item.draft_revision],
       );
     }
     await client.query('COMMIT');
@@ -574,6 +608,7 @@ async function createUiCopyPublication(userId: string, note: string | null, rest
       const current = groups.get(item.screen_key) ?? {};
       current[item.variable_name] = {
         locale: item.locale,
+        sourceText: item.source_text,
         text: item.text,
         format: item.text_format,
         variables: Array.isArray(item.template_variables) ? item.template_variables : [],
@@ -711,7 +746,7 @@ app.get('/api/admin/copy', async (c) => {
     ),
     pool.query<UiCopyEntryRow>(
       `SELECT entry.id, entry.screen_id, screen.screen_key, screen.display_name AS screen_label,
-              entry.variable_name, entry.locale, entry.description, entry.text_format, entry.draft_text,
+              entry.variable_name, entry.locale, entry.description, entry.text_format, entry.source_text, entry.draft_text,
               entry.template_variables, entry.max_length, entry.draft_revision, entry.is_active,
               entry.draft_updated_at, entry.created_at
        FROM ui_copy_entries entry
@@ -807,9 +842,9 @@ app.post('/api/admin/copy', async (c) => {
     try {
       const created = await pool.query<UiCopyEntryRow>(
         `INSERT INTO ui_copy_entries
-          (screen_id, variable_name, locale, description, text_format, draft_text, template_variables, max_length, created_by_user_id, draft_updated_by_user_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
-         RETURNING id, screen_id, variable_name, locale, description, text_format, draft_text,
+          (screen_id, variable_name, locale, description, text_format, source_text, draft_text, template_variables, max_length, created_by_user_id, draft_updated_by_user_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $6, $7, $8, $9, $9)
+         RETURNING id, screen_id, variable_name, locale, description, text_format, source_text, draft_text,
                    template_variables, max_length, draft_revision, is_active,
                    draft_updated_at, created_at`,
         [screenId, variableName, locale, description || null, textFormat, draftText, JSON.stringify(templateVariables), maxLength, user.id],
@@ -869,7 +904,7 @@ app.post('/api/admin/copy', async (c) => {
            is_active = $10, draft_revision = draft_revision + 1,
            draft_updated_by_user_id = $11, draft_updated_at = NOW(), updated_at = NOW()
        WHERE id = $1 AND draft_revision = $12
-       RETURNING id, screen_id, variable_name, locale, description, text_format, draft_text,
+       RETURNING id, screen_id, variable_name, locale, description, text_format, source_text, draft_text,
                  template_variables, max_length, draft_revision, is_active,
                  draft_updated_at, created_at`,
       [entryId, screenId, variableName, locale, description || null, textFormat, draftText, JSON.stringify(templateVariables), maxLength, isActive, user.id, draftRevision],
