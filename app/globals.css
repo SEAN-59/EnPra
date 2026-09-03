@@ -52,6 +52,32 @@ body { font-family: var(--font-enpra-sans), Arial, sans-serif; }
 
 .font-serif { font-family: var(--font-enpra-serif), Georgia, serif; }
 
+.speaking-speaker-wave-one,
+.speaking-speaker-wave-two {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .speaking-speaker-wave-one {
+    animation: speaking-speaker-wave-one 1.8s steps(1, end) infinite;
+  }
+
+  .speaking-speaker-wave-two {
+    animation: speaking-speaker-wave-two 1.8s steps(1, end) infinite;
+  }
+}
+
+@keyframes speaking-speaker-wave-one {
+  0%, 65% { opacity: 1; }
+  66%, 100% { opacity: 0; }
+}
+
+@keyframes speaking-speaker-wave-two {
+  0%, 32% { opacity: 0; }
+  33%, 65% { opacity: 1; }
+  66%, 100% { opacity: 0; }
+}
+
 .material-symbols-rounded {
   font-family: 'Material Symbols Rounded';
   font-style: normal;

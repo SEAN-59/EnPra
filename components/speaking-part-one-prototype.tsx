@@ -97,6 +97,18 @@ function Waveform({ active = false }: { active?: boolean }) {
   );
 }
 
+function PlaybackSpeakerIcon({ playing }: { playing: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="size-5" aria-hidden="true">
+      <path d="M3.5 10v4h4l5 4V6l-5 4h-4Z" fill="currentColor" stroke="none" />
+      {playing && <>
+        <path className="speaking-speaker-wave-one" d="M15.5 9.5a4 4 0 0 1 0 5" />
+        <path className="speaking-speaker-wave-two" d="M18 7a7.5 7.5 0 0 1 0 10" />
+      </>}
+    </svg>
+  );
+}
+
 function Countdown({ open, onDone }: { open: boolean; onDone: () => void }) {
   const [count, setCount] = useState(2);
   useDocumentScrollLock(open);
@@ -272,7 +284,7 @@ export function SpeakingPartOnePrototype() {
 
               <article className="relative mr-auto max-w-[90%] rounded-[1.5rem] rounded-tl-md border border-[#d8e1da] bg-[#f3f8f4] p-4 shadow-sm sm:max-w-[76%] sm:p-5">
                 <div className="flex items-start justify-between gap-4"><div><p className="text-[10px] font-bold tracking-[0.16em] text-[#547263]">EXAMINER · QUESTION {turnIndex + 1}</p><p className="mt-1 text-sm font-semibold text-[#40504d]">음성 질문</p></div><div className="relative"><button type="button" aria-label="질문 힌트 열기" onClick={() => setHintOpen((current) => !current)} className="grid size-8 place-items-center rounded-full border border-[#cfdbd3] bg-[#fffdf8] text-[#d76a47] shadow-sm hover:bg-[#fff5ef]"><CircleHelp className="size-4" /></button>{hintOpen && <div className="absolute right-0 top-10 z-30 w-48 overflow-hidden rounded-2xl border border-[#dcd6ca] bg-[#fffdf8] p-1.5 shadow-[0_14px_36px_rgba(29,41,53,0.15)] sm:left-0 sm:right-auto"><button type="button" onClick={() => { setSelectedHint('text'); setHintOpen(false); }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-[#40504d] hover:bg-[#fff4ef]"><Info className="size-4 text-[#d76a47]" />질문 텍스트 보기</button><button type="button" onClick={() => { setSelectedHint('structure'); setHintOpen(false); }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-[#40504d] hover:bg-[#fff4ef]"><Sparkles className="size-4 text-[#d76a47]" />답변 구조 힌트</button></div>}</div></div>
-                <div className="mt-5 flex items-center gap-3"><button type="button" aria-label="질문 다시 듣기" onClick={() => { setReplays((current) => Math.min(4, current + 1)); setQuestionPlaying(true); }} className="grid size-12 place-items-center rounded-2xl bg-[#38634f] text-white shadow-sm transition-transform hover:scale-105 active:scale-95"><Volume2 className="size-5" /></button><div><Waveform active={questionPlaying} /><p className="mt-1 text-xs text-[#6d7c74]">{questionPlaying ? '질문을 재생하고 있어요.' : replays === 0 ? '답변하세요.' : `답변하세요. · 다시 듣기 ${replays} / 4`}</p></div></div>
+                <div className="mt-5 flex items-center gap-3"><button type="button" aria-label="질문 다시 듣기" onClick={() => { setReplays((current) => Math.min(4, current + 1)); setQuestionPlaying(true); }} className="grid size-12 place-items-center rounded-2xl bg-[#38634f] text-white shadow-sm transition-transform hover:scale-105 active:scale-95"><PlaybackSpeakerIcon playing={questionPlaying} /></button><div><Waveform active={questionPlaying} /><p className="mt-1 text-xs text-[#6d7c74]">{questionPlaying ? '질문을 재생하고 있어요.' : replays === 0 ? '답변하세요.' : `답변하세요. · 다시 듣기 ${replays} / 4`}</p></div></div>
                 {selectedHint === 'text' && <div className="mt-4 rounded-xl border border-[#dbe5dd] bg-white/75 p-3 text-sm leading-6 text-[#40504d]"><span className="mr-2 text-xs font-bold tracking-[0.12em] text-[#d76a47]">TEXT</span>{currentTurn.prompt}</div>}
                 {selectedHint === 'structure' && <div className="mt-4 rounded-xl border border-[#f1d5c8] bg-[#fff9f5] p-3 text-sm leading-6 text-[#5a5048]"><span className="mr-2 text-xs font-bold tracking-[0.12em] text-[#d76a47]">HINT</span>Answer directly, then add one short reason or example.</div>}
               </article>
