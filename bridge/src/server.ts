@@ -1,6 +1,6 @@
 import { serve } from '@hono/node-server';
-import { timingSafeEqual } from 'node:crypto';
-import { mkdirSync } from 'node:fs';
+import { createHash, timingSafeEqual } from 'node:crypto';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
@@ -34,6 +34,44 @@ type VocabularyListRow = {
   learning_date: string | null;
   word_count: string | number;
   added_at?: string | null;
+};
+type UiCopyEntryRow = {
+  id: string | number;
+  copy_key: string;
+  scope: string;
+  locale: string;
+  description: string | null;
+  text_format: 'plain' | 'multiline';
+  draft_text: string;
+  template_variables: unknown;
+  max_length: number | null;
+  draft_revision: number;
+  is_active: boolean;
+  draft_updated_at: string;
+  created_at: string;
+};
+type UiCopyPublicationRow = {
+  id: string | number;
+  version: string | number;
+  status: 'building' | 'ready' | 'published' | 'failed';
+  content_hash: string | null;
+  static_json_path: string | null;
+  copy_count: number;
+  published_at: string | null;
+  created_at: string;
+  restored_from_publication_id: string | number | null;
+  note: string | null;
+  failure_reason: string | null;
+};
+type UiCopySnapshotInput = {
+  copy_key: string;
+  scope: string;
+  locale: string;
+  text: string;
+  text_format: 'plain' | 'multiline';
+  template_variables: unknown;
+  draft_revision: number;
+  entry_id: string | number | null;
 };
 
 const port = Number(process.env.PORT ?? 8787);
@@ -191,6 +229,68 @@ async function initializeDatabase() {
 
     CREATE INDEX IF NOT EXISTS user_vocabulary_list_subscriptions_visible_idx
       ON user_vocabulary_list_subscriptions (user_id, is_enabled, updated_at DESC);
+
+    CREATE TABLE IF NOT EXISTS ui_copy_entries (
+      id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      copy_key TEXT NOT NULL UNIQUE,
+      scope TEXT NOT NULL,
+      locale TEXT NOT NULL DEFAULT 'ko',
+      description TEXT,
+      text_format TEXT NOT NULL DEFAULT 'plain'
+        CHECK (text_format IN ('plain', 'multiline')),
+      draft_text TEXT NOT NULL,
+      template_variables JSONB NOT NULL DEFAULT '[]'::jsonb,
+      max_length INTEGER CHECK (max_length IS NULL OR max_length > 0),
+      draft_revision INTEGER NOT NULL DEFAULT 1 CHECK (draft_revision > 0),
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      created_by_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+      draft_updated_by_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+      draft_updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CHECK (copy_key ~ '^[a-z0-9]+(\\.[a-z0-9_]+)+$'),
+      CHECK (char_length(trim(draft_text)) > 0)
+    );
+
+    CREATE INDEX IF NOT EXISTS ui_copy_entries_scope_active_idx
+      ON ui_copy_entries (scope, locale, copy_key)
+      WHERE is_active = TRUE;
+
+    CREATE TABLE IF NOT EXISTS ui_copy_publications (
+      id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      version BIGINT GENERATED ALWAYS AS IDENTITY UNIQUE,
+      status TEXT NOT NULL DEFAULT 'building'
+        CHECK (status IN ('building', 'ready', 'published', 'failed')),
+      content_hash TEXT,
+      static_json_path TEXT,
+      copy_count INTEGER NOT NULL DEFAULT 0 CHECK (copy_count >= 0),
+      published_by_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      published_at TIMESTAMPTZ,
+      restored_from_publication_id BIGINT REFERENCES ui_copy_publications(id) ON DELETE SET NULL,
+      deployment_reference TEXT,
+      failure_reason TEXT,
+      note TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS ui_copy_publications_created_idx
+      ON ui_copy_publications (created_at DESC, id DESC);
+
+    CREATE TABLE IF NOT EXISTS ui_copy_publication_items (
+      publication_id BIGINT NOT NULL REFERENCES ui_copy_publications(id) ON DELETE CASCADE,
+      copy_key TEXT NOT NULL,
+      entry_id BIGINT REFERENCES ui_copy_entries(id) ON DELETE SET NULL,
+      scope TEXT NOT NULL,
+      locale TEXT NOT NULL,
+      text TEXT NOT NULL,
+      text_format TEXT NOT NULL CHECK (text_format IN ('plain', 'multiline')),
+      template_variables JSONB NOT NULL DEFAULT '[]'::jsonb,
+      draft_revision INTEGER NOT NULL,
+      PRIMARY KEY (publication_id, copy_key)
+    );
+
+    CREATE INDEX IF NOT EXISTS ui_copy_publication_items_scope_idx
+      ON ui_copy_publication_items (publication_id, scope, locale, copy_key);
   `);
   await initializeWritingDatabase(pool);
 }
@@ -238,6 +338,149 @@ async function upsertUser(user: UserContext) {
          updated_at = NOW()`,
     [user.id, user.displayName, isConfiguredAdmin],
   );
+}
+
+async function isAdminUser(userId: string) {
+  const result = await pool.query<{ role: 'user' | 'admin' }>(
+    'SELECT role FROM users WHERE id = $1',
+    [userId],
+  );
+  return result.rows[0]?.role === 'admin';
+}
+
+function serializeUiCopyEntry(row: UiCopyEntryRow) {
+  return {
+    id: Number(row.id),
+    copyKey: row.copy_key,
+    scope: row.scope,
+    locale: row.locale,
+    description: row.description,
+    textFormat: row.text_format,
+    draftText: row.draft_text,
+    templateVariables: Array.isArray(row.template_variables) ? row.template_variables : [],
+    maxLength: row.max_length,
+    draftRevision: Number(row.draft_revision),
+    isActive: row.is_active,
+    draftUpdatedAt: row.draft_updated_at,
+    createdAt: row.created_at,
+  };
+}
+
+function serializeUiCopyPublication(row: UiCopyPublicationRow) {
+  return {
+    id: Number(row.id),
+    version: Number(row.version),
+    status: row.status,
+    contentHash: row.content_hash,
+    staticJsonPath: row.static_json_path,
+    copyCount: Number(row.copy_count),
+    publishedAt: row.published_at,
+    createdAt: row.created_at,
+    restoredFromPublicationId: row.restored_from_publication_id === null ? null : Number(row.restored_from_publication_id),
+    note: row.note,
+    failureReason: row.failure_reason,
+  };
+}
+
+function isCopyKey(value: string) {
+  return /^[a-z0-9]+(\.[a-z0-9_]+)+$/.test(value);
+}
+
+function parseTemplateVariables(value: unknown) {
+  if (!Array.isArray(value) || value.length > 20) return null;
+  const variables = value.map((item) => typeof item === 'string' ? item.trim() : '');
+  if (variables.some((item) => !/^[a-z][a-z0-9_]*$/.test(item))) return null;
+  return [...new Set(variables)];
+}
+
+async function createUiCopyPublication(userId: string, note: string | null, restoreFromPublicationId?: number) {
+  const client = await pool.connect();
+  let publication: { id: string | number; version: string | number } | null = null;
+  let snapshot: UiCopySnapshotInput[] = [];
+  try {
+    await client.query('BEGIN');
+    if (restoreFromPublicationId) {
+      const source = await client.query<UiCopySnapshotInput>(
+        `SELECT copy_key, scope, locale, text, text_format, template_variables, draft_revision, entry_id
+         FROM ui_copy_publication_items
+         WHERE publication_id = $1
+         ORDER BY scope ASC, locale ASC, copy_key ASC`,
+        [restoreFromPublicationId],
+      );
+      if (!source.rowCount) throw new Error('복원할 발행본을 찾을 수 없습니다.');
+      snapshot = source.rows;
+    } else {
+      const source = await client.query<UiCopySnapshotInput>(
+        `SELECT id AS entry_id, copy_key, scope, locale, draft_text AS text, text_format, template_variables, draft_revision
+         FROM ui_copy_entries
+         WHERE is_active = TRUE
+         ORDER BY scope ASC, locale ASC, copy_key ASC`,
+      );
+      if (!source.rowCount) throw new Error('발행할 활성 문구가 없습니다.');
+      snapshot = source.rows;
+    }
+
+    const created = await client.query<{ id: string | number; version: string | number }>(
+      `INSERT INTO ui_copy_publications (status, copy_count, published_by_user_id, restored_from_publication_id, note)
+       VALUES ('building', $1, $2, $3, $4)
+       RETURNING id, version`,
+      [snapshot.length, userId, restoreFromPublicationId ?? null, note],
+    );
+    publication = created.rows[0];
+    for (const item of snapshot) {
+      await client.query(
+        `INSERT INTO ui_copy_publication_items
+          (publication_id, copy_key, entry_id, scope, locale, text, text_format, template_variables, draft_revision)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [publication.id, item.copy_key, item.entry_id, item.scope, item.locale, item.text, item.text_format, JSON.stringify(item.template_variables ?? []), item.draft_revision],
+      );
+    }
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  if (!publication) throw new Error('발행본을 만들지 못했습니다.');
+  const version = Number(publication.version);
+  const payload = {
+    schemaVersion: 1,
+    publicationVersion: version,
+    generatedAt: new Date().toISOString(),
+    entries: snapshot.map((item) => ({
+      key: item.copy_key,
+      scope: item.scope,
+      locale: item.locale,
+      text: item.text,
+      format: item.text_format,
+      variables: Array.isArray(item.template_variables) ? item.template_variables : [],
+    })),
+  };
+  const serialized = `${JSON.stringify(payload, null, 2)}\n`;
+  const hash = createHash('sha256').update(serialized).digest('hex');
+  const relativePath = `ui-copy-publications/ui-copy.v${version}.${hash.slice(0, 12)}.json`;
+  try {
+    const destination = join(dataDir, relativePath);
+    mkdirSync(join(dataDir, 'ui-copy-publications'), { recursive: true });
+    writeFileSync(destination, serialized, 'utf8');
+    const updated = await pool.query<UiCopyPublicationRow>(
+      `UPDATE ui_copy_publications
+       SET status = 'ready', content_hash = $2, static_json_path = $3, published_at = NOW()
+       WHERE id = $1
+       RETURNING *`,
+      [publication.id, hash, relativePath],
+    );
+    return serializeUiCopyPublication(updated.rows[0]);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '발행본 JSON 파일을 만들지 못했습니다.';
+    await pool.query(
+      `UPDATE ui_copy_publications SET status = 'failed', failure_reason = $2 WHERE id = $1`,
+      [publication.id, message.slice(0, 1000)],
+    );
+    throw error;
+  }
 }
 
 async function markConnection(userId: string, status: 'pending' | 'active' | 'disconnected' | 'error', planType?: string | null) {
@@ -314,12 +557,124 @@ app.get('/api/me', async (c) => {
 
 app.get('/api/admin/access', async (c) => {
   const user = c.get('user');
-  const result = await pool.query<{ role: 'user' | 'admin' }>(
-    'SELECT role FROM users WHERE id = $1',
-    [user.id],
-  );
-  const role = result.rows[0]?.role === 'admin' ? 'admin' : 'user';
-  return c.json({ role, isAdmin: role === 'admin' });
+  const isAdmin = await isAdminUser(user.id);
+  return c.json({ role: isAdmin ? 'admin' : 'user', isAdmin });
+});
+
+app.get('/api/admin/copy', async (c) => {
+  const user = c.get('user');
+  if (!await isAdminUser(user.id)) return c.json({ error: '관리자만 문구 관리에 접근할 수 있습니다.' }, 403);
+
+  const [entries, publications] = await Promise.all([
+    pool.query<UiCopyEntryRow>(
+      `SELECT id, copy_key, scope, locale, description, text_format, draft_text,
+              template_variables, max_length, draft_revision, is_active,
+              draft_updated_at, created_at
+       FROM ui_copy_entries
+       ORDER BY scope ASC, locale ASC, copy_key ASC`,
+    ),
+    pool.query<UiCopyPublicationRow>(
+      `SELECT id, version, status, content_hash, static_json_path, copy_count,
+              published_at, created_at, restored_from_publication_id, note, failure_reason
+       FROM ui_copy_publications
+       ORDER BY version DESC
+       LIMIT 20`,
+    ),
+  ]);
+  return c.json({
+    entries: entries.rows.map(serializeUiCopyEntry),
+    publications: publications.rows.map(serializeUiCopyPublication),
+  });
+});
+
+app.post('/api/admin/copy', async (c) => {
+  const user = c.get('user');
+  if (!await isAdminUser(user.id)) return c.json({ error: '관리자만 문구를 변경할 수 있습니다.' }, 403);
+
+  let body: Record<string, unknown>;
+  try {
+    body = await c.req.json<Record<string, unknown>>();
+  } catch {
+    return c.json({ error: '문구 관리 요청 형식이 올바르지 않습니다.' }, 400);
+  }
+  const action = typeof body.action === 'string' ? body.action : '';
+
+  if (action === 'create-entry') {
+    const copyKey = typeof body.copyKey === 'string' ? body.copyKey.trim() : '';
+    const scope = typeof body.scope === 'string' ? body.scope.trim() : '';
+    const locale = typeof body.locale === 'string' ? body.locale.trim() : 'ko';
+    const description = typeof body.description === 'string' ? body.description.trim() : '';
+    const textFormat = body.textFormat === 'multiline' ? 'multiline' : body.textFormat === 'plain' ? 'plain' : null;
+    const draftText = typeof body.draftText === 'string' ? body.draftText.trim() : '';
+    const templateVariables = parseTemplateVariables(body.templateVariables ?? []);
+    const maxLength = body.maxLength === null || body.maxLength === undefined || body.maxLength === '' ? null : Number(body.maxLength);
+    if (!isCopyKey(copyKey) || copyKey.length > 180 || !scope || scope.length > 180 || !/^[a-z]{2}(?:-[A-Z]{2})?$/.test(locale) || description.length > 500 || !textFormat || !draftText || draftText.length > 5000 || templateVariables === null || (maxLength !== null && (!Number.isSafeInteger(maxLength) || maxLength < 1 || maxLength > 5000)) || (maxLength !== null && draftText.length > maxLength)) {
+      return c.json({ error: '변수명, 소속, 문구 내용과 길이 제한을 확인해 주세요.' }, 400);
+    }
+    try {
+      const created = await pool.query<UiCopyEntryRow>(
+        `INSERT INTO ui_copy_entries
+          (copy_key, scope, locale, description, text_format, draft_text, template_variables, max_length, created_by_user_id, draft_updated_by_user_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
+         RETURNING id, copy_key, scope, locale, description, text_format, draft_text,
+                   template_variables, max_length, draft_revision, is_active,
+                   draft_updated_at, created_at`,
+        [copyKey, scope, locale, description || null, textFormat, draftText, JSON.stringify(templateVariables), maxLength, user.id],
+      );
+      return c.json({ entry: serializeUiCopyEntry(created.rows[0]) }, 201);
+    } catch (error) {
+      if ((error as { code?: string }).code === '23505') return c.json({ error: '이미 사용 중인 변수명입니다.' }, 409);
+      throw error;
+    }
+  }
+
+  if (action === 'update-entry') {
+    const entryId = Number(body.entryId);
+    const draftRevision = Number(body.draftRevision);
+    const draftText = typeof body.draftText === 'string' ? body.draftText.trim() : '';
+    const description = typeof body.description === 'string' ? body.description.trim() : '';
+    const scope = typeof body.scope === 'string' ? body.scope.trim() : '';
+    const locale = typeof body.locale === 'string' ? body.locale.trim() : '';
+    const textFormat = body.textFormat === 'multiline' ? 'multiline' : body.textFormat === 'plain' ? 'plain' : null;
+    const templateVariables = parseTemplateVariables(body.templateVariables ?? []);
+    const maxLength = body.maxLength === null || body.maxLength === undefined || body.maxLength === '' ? null : Number(body.maxLength);
+    const isActive = typeof body.isActive === 'boolean' ? body.isActive : null;
+    if (!Number.isSafeInteger(entryId) || entryId < 1 || !Number.isSafeInteger(draftRevision) || draftRevision < 1 || !scope || scope.length > 180 || !/^[a-z]{2}(?:-[A-Z]{2})?$/.test(locale) || description.length > 500 || !textFormat || !draftText || draftText.length > 5000 || templateVariables === null || isActive === null || (maxLength !== null && (!Number.isSafeInteger(maxLength) || maxLength < 1 || maxLength > 5000)) || (maxLength !== null && draftText.length > maxLength)) {
+      return c.json({ error: '문구의 내용과 설정값을 확인해 주세요.' }, 400);
+    }
+    const updated = await pool.query<UiCopyEntryRow>(
+      `UPDATE ui_copy_entries
+       SET scope = $2, locale = $3, description = $4, text_format = $5,
+           draft_text = $6, template_variables = $7, max_length = $8,
+           is_active = $9, draft_revision = draft_revision + 1,
+           draft_updated_by_user_id = $10, draft_updated_at = NOW(), updated_at = NOW()
+       WHERE id = $1 AND draft_revision = $11
+       RETURNING id, copy_key, scope, locale, description, text_format, draft_text,
+                 template_variables, max_length, draft_revision, is_active,
+                 draft_updated_at, created_at`,
+      [entryId, scope, locale, description || null, textFormat, draftText, JSON.stringify(templateVariables), maxLength, isActive, user.id, draftRevision],
+    );
+    if (!updated.rowCount) {
+      const existing = await pool.query('SELECT 1 FROM ui_copy_entries WHERE id = $1', [entryId]);
+      return c.json({ error: existing.rowCount ? '다른 관리자가 먼저 수정했습니다. 새로고침 후 다시 저장해 주세요.' : '문구를 찾을 수 없습니다.' }, existing.rowCount ? 409 : 404);
+    }
+    return c.json({ entry: serializeUiCopyEntry(updated.rows[0]) });
+  }
+
+  if (action === 'create-publication' || action === 'restore-publication') {
+    const note = typeof body.note === 'string' ? body.note.trim().slice(0, 500) : null;
+    const restoreFromPublicationId = action === 'restore-publication' ? Number(body.publicationId) : undefined;
+    if (restoreFromPublicationId !== undefined && (!Number.isSafeInteger(restoreFromPublicationId) || restoreFromPublicationId < 1)) return c.json({ error: '되돌릴 발행본을 선택해 주세요.' }, 400);
+    try {
+      const publication = await createUiCopyPublication(user.id, note || null, restoreFromPublicationId);
+      return c.json({ publication });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '발행본을 생성하지 못했습니다.';
+      return c.json({ error: message }, 400);
+    }
+  }
+
+  return c.json({ error: '올바른 문구 관리 요청이 아닙니다.' }, 400);
 });
 
 app.get('/api/vocabulary/lists', async (c) => {

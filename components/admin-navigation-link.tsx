@@ -35,8 +35,11 @@ export function AdminNavigationLink({ active, closeMenu }: AdminNavigationLinkPr
   if (!isAdmin) return null;
 
   return (
-    <a onClick={closeMenu} href="/admin" className={active ? 'flex items-center gap-3 rounded-lg bg-[#e9e5dc] px-3 py-2.5 text-sm font-semibold' : 'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-[#66706d] hover:bg-[#ebe7dd]'}>
-      <ShieldCheck className={active ? 'size-4 text-[#e9784f]' : 'size-4'} aria-hidden="true" />관리하기
-    </a>
+    <>
+      <div className="my-3 border-t border-[#dfd8cb]" aria-hidden="true" />
+      <a onClick={closeMenu} href="/admin" className={active ? 'flex items-center gap-3 rounded-lg bg-[#e9e5dc] px-3 py-2.5 text-sm font-semibold' : 'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-[#66706d] hover:bg-[#ebe7dd]'}>
+        <ShieldCheck className={active ? 'size-4 text-[#e9784f]' : 'size-4'} aria-hidden="true" />MANAGE
+      </a>
+    </>
   );
 }
