@@ -4903,5 +4903,77 @@ export const UI_COPY_ENTRIES: UiCopyEntrySeed[] = [
     "draftText": "소속 화면 페이지",
     "description": "components/manage-copy-client.tsx 소속 화면 목록 페이지네이션의 접근성 이름",
     "textFormat": "plain"
+  },
+  {
+    "screenKey": "manage.copy",
+    "variableName": "mockup_eyebrow",
+    "sourceText": "COPY PREVIEW",
+    "draftText": "COPY PREVIEW",
+    "description": "components/manage-copy-client.tsx 문구 위치 미리보기의 상단 구분 문구",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "manage.copy",
+    "variableName": "mockup_title",
+    "sourceText": "문구 위치 미리보기",
+    "draftText": "문구 위치 미리보기",
+    "description": "components/manage-copy-client.tsx 문구 위치 미리보기 제목",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "manage.copy",
+    "variableName": "mockup_description",
+    "sourceText": "문구를 클릭하면 오른쪽에서 초안을 수정할 수 있습니다.",
+    "draftText": "문구를 클릭하면 오른쪽에서 초안을 수정할 수 있습니다.",
+    "description": "components/manage-copy-client.tsx 문구 위치 미리보기 안내",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "manage.copy",
+    "variableName": "mockup_no_screen",
+    "sourceText": "위 목록에서 소속 화면을 선택하세요.",
+    "draftText": "위 목록에서 소속 화면을 선택하세요.",
+    "description": "components/manage-copy-client.tsx 소속 화면을 선택하기 전의 안내",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "manage.copy",
+    "variableName": "mockup_edit_title",
+    "sourceText": "문구 편집",
+    "draftText": "문구 편집",
+    "description": "components/manage-copy-client.tsx 목업 오른쪽 편집 영역 제목",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "manage.copy",
+    "variableName": "mockup_edit_empty",
+    "sourceText": "목업의 문구를 선택하세요.",
+    "draftText": "목업의 문구를 선택하세요.",
+    "description": "components/manage-copy-client.tsx 목업에서 문구를 선택하기 전의 안내",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "manage.copy",
+    "variableName": "mockup_source",
+    "sourceText": "원문",
+    "draftText": "원문",
+    "description": "components/manage-copy-client.tsx 목업 편집 영역의 원문 라벨",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "manage.copy",
+    "variableName": "mockup_draft",
+    "sourceText": "초안",
+    "draftText": "초안",
+    "description": "components/manage-copy-client.tsx 목업 편집 영역의 초안 라벨",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "manage.copy",
+    "variableName": "mockup_save",
+    "sourceText": "문구 저장",
+    "draftText": "문구 저장",
+    "description": "components/manage-copy-client.tsx 목업 편집 영역의 저장 버튼",
+    "textFormat": "plain"
   }
 ];
