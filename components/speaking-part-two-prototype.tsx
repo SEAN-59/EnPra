@@ -12,7 +12,7 @@ import {
   Send,
   Sparkles,
 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 
@@ -116,7 +116,6 @@ export function SpeakingPartTwoPrototype() {
   const [followupHintOpen, setFollowupHintOpen] = useState(false);
   const [selectedFollowupHint, setSelectedFollowupHint] = useState<FollowupHint>(null);
   const [questionPlaying, setQuestionPlaying] = useState(false);
-  const recordingAnchorRef = useRef<HTMLDivElement>(null);
   const targetLevel = 6.5;
   const followUpLimit = targetLevel >= 6.5 ? 2 : targetLevel >= 6 ? 1 : 0;
   const isCardResponse = phase === 'card';
@@ -188,10 +187,10 @@ export function SpeakingPartTwoPrototype() {
   }, [questionPlaying]);
 
   useEffect(() => {
-    if (stage !== 'recording') return;
-    const frame = window.requestAnimationFrame(() => recordingAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }));
+    if (!['recording', 'recorded', 'processing', 'followup'].includes(stage)) return;
+    const frame = window.requestAnimationFrame(() => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' }));
     return () => window.cancelAnimationFrame(frame);
-  }, [phase, stage]);
+  }, [followUpIndex, phase, stage]);
 
   const revealCard = () => setCardRevealed(true);
   const updateMemo = (value: string) => setMemo(value.split('\n').slice(0, MAX_MEMO_LINES).join('\n').slice(0, MAX_MEMO_CHARACTERS));
@@ -226,7 +225,7 @@ export function SpeakingPartTwoPrototype() {
 
           {phase === 'followup' && <><article className="mr-auto max-w-[90%] rounded-[1.5rem] rounded-tl-md border border-[#ead7cb] bg-[#fff7f1] p-4 shadow-sm sm:max-w-[76%] sm:p-5"><p className="text-[10px] font-bold tracking-[0.16em] text-[#b05236]">CUE CARD · COMPLETE</p><div className="mt-3 flex items-center gap-3"><span className="grid size-10 place-items-center rounded-2xl bg-[#d76a47] text-white"><FileText className="size-5" /></span><p className="text-sm font-semibold text-[#58645f]">카드 답변을 마치고 연계 질문으로 이어갑니다.</p></div></article><RecordingBubble seconds={primaryRecordingSeconds || CARD_RESPONSE_SECONDS} processing={false} followup={false} />{completedFollowUpSeconds.map((seconds, index) => <div key={`${index}-${seconds}`} className="space-y-3"><QuestionBubble index={index} total={followUpLimit} playing={false} onReplay={() => undefined} hintOpen={false} onHintOpen={() => undefined} selectedHint={null} onSelectHint={() => undefined} completed /><RecordingBubble seconds={seconds} processing={false} followup /></div>)}</>}
 
-          {stage === 'recording' && <div ref={recordingAnchorRef}><article className="ml-auto max-w-[90%] rounded-[1.5rem] rounded-tr-md bg-[#1d2935] p-4 text-[#fffdf8] shadow-sm sm:max-w-[76%] sm:p-5"><div className="flex items-center gap-3"><span className="relative grid size-10 place-items-center rounded-2xl bg-white/10 text-[#f0b197]"><span className="absolute size-3 animate-ping rounded-full bg-[#f0b197]/45" /><Mic className="relative size-5" /></span><div><p className="text-[10px] font-bold tracking-[0.16em] text-[#f0b197]">{isCardResponse ? 'YOUR LONG TURN' : 'FOLLOW-UP RESPONSE'}</p><p className="mt-1 text-sm font-semibold">녹음 중 · {formatTime(recordingSeconds)} / {formatTime(recordingLimit)}</p></div></div><div className="mt-4 h-1.5 overflow-hidden rounded-full bg-white/20"><div className="h-full rounded-full bg-[#f0b197] transition-[width] duration-1000 ease-linear" style={{ width: `${Math.min(100, (recordingSeconds / recordingLimit) * 100)}%` }} /></div></article></div>}
+          {stage === 'recording' && <article className="ml-auto max-w-[90%] rounded-[1.5rem] rounded-tr-md bg-[#1d2935] p-4 text-[#fffdf8] shadow-sm sm:max-w-[76%] sm:p-5"><div className="flex items-center gap-3"><span className="relative grid size-10 place-items-center rounded-2xl bg-white/10 text-[#f0b197]"><span className="absolute size-3 animate-ping rounded-full bg-[#f0b197]/45" /><Mic className="relative size-5" /></span><div><p className="text-[10px] font-bold tracking-[0.16em] text-[#f0b197]">{isCardResponse ? 'YOUR LONG TURN' : 'FOLLOW-UP RESPONSE'}</p><p className="mt-1 text-sm font-semibold">녹음 중 · {formatTime(recordingSeconds)} / {formatTime(recordingLimit)}</p></div></div><div className="mt-4 h-1.5 overflow-hidden rounded-full bg-white/20"><div className="h-full rounded-full bg-[#f0b197] transition-[width] duration-1000 ease-linear" style={{ width: `${Math.min(100, (recordingSeconds / recordingLimit) * 100)}%` }} /></div></article>}
 
           {(stage === 'recorded' || stage === 'processing') && <RecordingBubble seconds={recordingSeconds} processing={stage === 'processing'} followup={!isCardResponse} />}
           {phase === 'followup' && stage !== 'processing' && stage !== 'complete' && <QuestionBubble index={followUpIndex} total={followUpLimit} playing={questionPlaying} onReplay={() => setQuestionPlaying(true)} hintOpen={followupHintOpen} onHintOpen={() => setFollowupHintOpen((current) => !current)} selectedHint={selectedFollowupHint} onSelectHint={(hint) => { setSelectedFollowupHint(hint); setFollowupHintOpen(false); }} completed={stage === 'recorded'} />}
