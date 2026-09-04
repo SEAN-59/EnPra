@@ -3529,6 +3529,30 @@ export const UI_COPY_ENTRIES: UiCopyEntrySeed[] = [
     "textFormat": "plain"
   },
   {
+    "screenKey": "writing.board",
+    "variableName": "start_level_50",
+    "sourceText": "5.0+",
+    "draftText": "5.0+",
+    "description": "components/writing-client.tsx 시작 레벨 선택 카드의 5.0+ 레벨명",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "writing.board",
+    "variableName": "start_level_60",
+    "sourceText": "6.0+",
+    "draftText": "6.0+",
+    "description": "components/writing-client.tsx 시작 레벨 선택 카드의 6.0+ 레벨명",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "writing.board",
+    "variableName": "start_level_70",
+    "sourceText": "7.0+",
+    "draftText": "7.0+",
+    "description": "components/writing-client.tsx 시작 레벨 선택 카드의 7.0+ 레벨명",
+    "textFormat": "plain"
+  },
+  {
     "screenKey": "writing.common",
     "variableName": "copy_001",
     "sourceText": "BOARD",
