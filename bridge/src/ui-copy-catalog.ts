@@ -5627,5 +5627,93 @@ export const UI_COPY_ENTRIES: UiCopyEntrySeed[] = [
     "draftText": "Speaking 레벨 데이터 연동 후 이 창에서 변경할 레벨을 선택할 수 있습니다.",
     "description": "components/speaking-practice.tsx 강등 준비 안내",
     "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.notebook",
+    "variableName": "queue_label",
+    "sourceText": "REVIEW QUEUE",
+    "draftText": "REVIEW QUEUE",
+    "description": "components/speaking-notebook.tsx 복습 안내 상단 라벨",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.notebook",
+    "variableName": "queue_title",
+    "sourceText": "다시 확인할 답변",
+    "draftText": "다시 확인할 답변",
+    "description": "components/speaking-notebook.tsx 복습 안내 제목",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.notebook",
+    "variableName": "queue_description",
+    "sourceText": "완료한 답변은 질문, 녹음, 전사문과 개선 포인트를 함께 확인할 수 있습니다.",
+    "draftText": "완료한 답변은 질문, 녹음, 전사문과 개선 포인트를 함께 확인할 수 있습니다.",
+    "description": "components/speaking-notebook.tsx 복습 안내 설명",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.notebook",
+    "variableName": "question",
+    "sourceText": "QUESTION",
+    "draftText": "QUESTION",
+    "description": "components/speaking-notebook.tsx 질문 섹션 라벨",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.notebook",
+    "variableName": "answer",
+    "sourceText": "MY ANSWER",
+    "draftText": "MY ANSWER",
+    "description": "components/speaking-notebook.tsx 내 답변 섹션 라벨",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.notebook",
+    "variableName": "feedback",
+    "sourceText": "FEEDBACK · IMPROVE",
+    "draftText": "FEEDBACK · IMPROVE",
+    "description": "components/speaking-notebook.tsx 피드백 섹션 라벨",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.notebook",
+    "variableName": "review",
+    "sourceText": "다시 연습하기",
+    "draftText": "다시 연습하기",
+    "description": "components/speaking-notebook.tsx 재학습 버튼",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.notebook",
+    "variableName": "strength",
+    "sourceText": "잘한 점",
+    "draftText": "잘한 점",
+    "description": "components/speaking-notebook.tsx 강점 라벨",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.notebook",
+    "variableName": "improve",
+    "sourceText": "다음에 보완할 점",
+    "draftText": "다음에 보완할 점",
+    "description": "components/speaking-notebook.tsx 개선 라벨",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.notebook",
+    "variableName": "recording_label",
+    "sourceText": "MY RECORDING",
+    "draftText": "MY RECORDING",
+    "description": "components/speaking-notebook.tsx 녹음 재생 라벨",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.notebook",
+    "variableName": "pending_note",
+    "sourceText": "음성 처리와 채점 연동 후에는 실제 완료 기록만 이 목록에 저장됩니다.",
+    "draftText": "음성 처리와 채점 연동 후에는 실제 완료 기록만 이 목록에 저장됩니다.",
+    "description": "components/speaking-notebook.tsx 음성 처리 연동 안내",
+    "textFormat": "plain"
   }
 ];
