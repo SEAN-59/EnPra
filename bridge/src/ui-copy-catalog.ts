@@ -5519,8 +5519,8 @@ export const UI_COPY_ENTRIES: UiCopyEntrySeed[] = [
   {
     "screenKey": "speaking.part3",
     "variableName": "description",
-    "sourceText": "Part 2 주제를 넓혀 사회적 관점과 이유를 논리적으로 설명해 보세요.",
-    "draftText": "Part 2 주제를 넓혀 사회적 관점과 이유를 논리적으로 설명해 보세요.",
+    "sourceText": "Part 2 큐카드의 주제를 확장해 사회적 관점과 이유를 논리적으로 설명해 보세요.",
+    "draftText": "Part 2 큐카드의 주제를 확장해 사회적 관점과 이유를 논리적으로 설명해 보세요.",
     "description": "components/speaking-part-one-prototype.tsx Part 3 안내",
     "textFormat": "plain"
   },
@@ -5543,8 +5543,8 @@ export const UI_COPY_ENTRIES: UiCopyEntrySeed[] = [
   {
     "screenKey": "speaking.part3",
     "variableName": "section_description",
-    "sourceText": "Part 2 주제를 바탕으로 이어지는 심화 음성 대화",
-    "draftText": "Part 2 주제를 바탕으로 이어지는 심화 음성 대화",
+    "sourceText": "Part 2 큐카드 주제를 확장한 심화 음성 대화",
+    "draftText": "Part 2 큐카드 주제를 확장한 심화 음성 대화",
     "description": "components/speaking-part-one-prototype.tsx Part 3 구역 안내",
     "textFormat": "plain"
   },
@@ -5567,8 +5567,8 @@ export const UI_COPY_ENTRIES: UiCopyEntrySeed[] = [
   {
     "screenKey": "speaking.part3",
     "variableName": "ready_description",
-    "sourceText": "카운트다운 뒤 Part 2 주제와 연결된 심화 질문이 재생됩니다. 의견, 이유, 비교와 예시를 활용해 답해 보세요.",
-    "draftText": "카운트다운 뒤 Part 2 주제와 연결된 심화 질문이 재생됩니다. 의견, 이유, 비교와 예시를 활용해 답해 보세요.",
+    "sourceText": "카운트다운 뒤 Part 2 큐카드 주제를 확장한 심화 질문이 재생됩니다. 의견, 이유, 비교와 예시를 활용해 답해 보세요.",
+    "draftText": "카운트다운 뒤 Part 2 큐카드 주제를 확장한 심화 질문이 재생됩니다. 의견, 이유, 비교와 예시를 활용해 답해 보세요.",
     "description": "components/speaking-part-one-prototype.tsx Part 3 시작 전 안내",
     "textFormat": "plain"
   },

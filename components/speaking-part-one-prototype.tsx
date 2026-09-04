@@ -153,13 +153,13 @@ const sessionCopy = {
   },
   part3: {
     title: 'Part 3 심화 대화 연습.',
-    description: 'Part 2 주제를 넓혀 사회적 관점과 이유를 논리적으로 설명해 보세요.',
+    description: 'Part 2 큐카드의 주제를 확장해 사회적 관점과 이유를 논리적으로 설명해 보세요.',
     level: '6.5A · 학습하기',
     section: 'PART 3 · DISCUSSION',
-    sectionDescription: 'Part 2 주제를 바탕으로 이어지는 심화 음성 대화',
+    sectionDescription: 'Part 2 큐카드 주제를 확장한 심화 음성 대화',
     readyLabel: 'PART 3 READY',
     readyTitle: '심화 대화를 시작할 준비가 됐어요.',
-    readyDescription: '카운트다운 뒤 Part 2 주제와 연결된 심화 질문이 재생됩니다. 의견, 이유, 비교와 예시를 활용해 답해 보세요.',
+    readyDescription: '카운트다운 뒤 Part 2 큐카드 주제를 확장한 심화 질문이 재생됩니다. 의견, 이유, 비교와 예시를 활용해 답해 보세요.',
     completeLabel: 'PART 3 COMPLETE',
   },
 } as const;
