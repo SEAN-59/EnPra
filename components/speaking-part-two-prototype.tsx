@@ -151,7 +151,7 @@ export function SpeakingPartTwoPrototype() {
     if (stage !== 'preparing') return;
     const timer = window.setInterval(() => setPreparationRemaining((current) => {
       if (current <= 1) {
-        setStage('recording');
+        setStage('countdown');
         setRecordingSeconds(0);
         return 0;
       }
