@@ -28,6 +28,7 @@ type NotebookEntry = {
   focuses: string[];
   turns: SpeakingTurn[];
   strength: string;
+  improve: string;
 };
 
 const previewEntries: NotebookEntry[] = [
@@ -46,6 +47,7 @@ const previewEntries: NotebookEntry[] = [
       { id: 2, label: 'QUESTION 2', question: 'Should local governments spend more money on public parks?', translation: '지방 정부는 공원에 더 많은 예산을 써야 할까요?', transcript: 'Yes, I think they should, especially in crowded areas. Parks are free places where people of different ages can exercise and spend time together.', improvedAnswer: 'Yes, particularly in densely populated neighbourhoods where residents may not have private outdoor space. Well-maintained parks offer a free place to exercise, socialise, and improve their mental well-being.', duration: 47, hasRecording: false },
     ],
     strength: '의견을 먼저 밝힌 뒤 두 가지 이유를 자연스럽게 연결했어요.',
+    improve: '각 답변에 공원이나 광장처럼 구체적인 예시를 한 가지 더하면 논지가 더 설득력 있어집니다.',
   },
   {
     id: 2,
@@ -63,6 +65,7 @@ const previewEntries: NotebookEntry[] = [
       { id: 3, label: 'FOLLOW-UP 2', question: 'How can cities encourage people to use public spaces more often?', translation: '도시는 사람들이 공공장소를 더 자주 이용하도록 어떻게 장려할 수 있을까요?', transcript: 'They could keep parks safe and organise simple community events. If a space is clean and has useful facilities, more people will want to visit it.', improvedAnswer: 'Cities can encourage people to use public spaces by keeping them clean, safe, and easy to reach by public transport. They could also organise low-cost events, such as weekend markets or outdoor performances, which would give residents a reason to visit regularly.', duration: 34, hasRecording: true },
     ],
     strength: '장소, 방문 시점, 활동을 순서대로 말해 긴 답변의 흐름이 안정적이었어요.',
+    improve: '큐카드 답변의 끝에 해당 장소가 기억에 남은 이유를 한 문장으로 정리하면 마무리가 더 선명해집니다.',
   },
   {
     id: 3,
@@ -80,6 +83,7 @@ const previewEntries: NotebookEntry[] = [
       { id: 3, label: 'QUESTION 3', question: 'Do you think you will live there in the future?', translation: '앞으로도 그곳에서 살 것 같나요?', transcript: 'I might return in the future because my family is there. However, I would like to gain more work experience in a bigger city first.', improvedAnswer: 'I might live there again in the future because my family is there and I feel comfortable in the town. However, I would like to get more work experience in a bigger city first.', duration: 20, hasRecording: false },
     ],
     strength: '현재완료와 변화의 결과를 적절하게 활용해 명확하게 답했어요.',
+    improve: '변화가 주민들의 생활에 미친 결과를 한 문장 더 덧붙이면 답변을 더 자연스럽게 확장할 수 있습니다.',
   },
 ];
 
@@ -126,7 +130,7 @@ function RecordingPlayer({ duration, label }: { duration: number; label: string 
   );
 }
 
-function EntryCard({ entry, opened, onToggle, labels }: { entry: NotebookEntry; opened: boolean; onToggle: () => void; labels: { dialogue: string; question: string; answer: string; feedback: string; strength: string; improvedAnswer: string; recording: string; recordingAvailable: string; recordingUnavailable: string } }) {
+function EntryCard({ entry, opened, onToggle, labels }: { entry: NotebookEntry; opened: boolean; onToggle: () => void; labels: { dialogue: string; question: string; answer: string; feedback: string; strength: string; improve: string; improvedAnswer: string; recording: string; recordingAvailable: string; recordingUnavailable: string } }) {
   const statusStyle = entry.status === '보완 필요'
     ? 'bg-[#fff1eb] text-[#b25336]'
     : entry.status === '복습 권장'
@@ -166,6 +170,7 @@ function EntryCard({ entry, opened, onToggle, labels }: { entry: NotebookEntry; 
           <aside className="h-fit rounded-2xl border border-[#ead9ce] bg-[#fff9f5] p-5">
             <p className="flex items-center gap-2 text-xs font-bold tracking-[.14em] text-[#c85f40]"><Sparkles className="size-4" />{labels.feedback}</p>
             <section className="mt-5"><p className="text-xs font-bold text-[#50625a]">{labels.strength}</p><p className="mt-2 text-sm leading-6 text-[#5d645f]">{entry.strength}</p></section>
+            <section className="mt-5 border-t border-[#eddcd1] pt-5"><p className="text-xs font-bold text-[#b25336]">{labels.improve}</p><p className="mt-2 text-sm leading-6 text-[#6c5a51]">{entry.improve}</p></section>
             <div className="mt-5 flex flex-wrap gap-2">{entry.focuses.map((focus) => <span key={focus} className="rounded-full border border-[#ead4c7] bg-white px-2.5 py-1 text-xs font-bold text-[#a25b43]">{focus}</span>)}</div>
           </aside>
         </div>
@@ -187,6 +192,7 @@ export function SpeakingNotebook() {
   const answer = useStaticCopy('speaking.notebook', 'answer', 'MY ANSWER');
   const feedback = useStaticCopy('speaking.notebook', 'feedback', 'FEEDBACK · IMPROVE');
   const strength = useStaticCopy('speaking.notebook', 'strength', '잘한 점');
+  const improve = useStaticCopy('speaking.notebook', 'improve', '추가 보완 포인트');
   const improvedAnswer = useStaticCopy('speaking.notebook', 'improved_answer', 'IMPROVED ANSWER');
   const recording = useStaticCopy('speaking.notebook', 'recording_label', 'MY RECORDING');
   const recordingAvailable = useStaticCopy('speaking.notebook', 'recording_available', '녹음본 있음');
@@ -201,7 +207,7 @@ export function SpeakingNotebook() {
       </header>
 
       <div className="space-y-3">
-        {previewEntries.map((entry) => <EntryCard key={entry.id} entry={entry} opened={openedId === entry.id} onToggle={() => setOpenedId((current) => current === entry.id ? null : entry.id)} labels={{ dialogue, question, answer, feedback, strength, improvedAnswer, recording, recordingAvailable, recordingUnavailable }} />)}
+        {previewEntries.map((entry) => <EntryCard key={entry.id} entry={entry} opened={openedId === entry.id} onToggle={() => setOpenedId((current) => current === entry.id ? null : entry.id)} labels={{ dialogue, question, answer, feedback, strength, improve, improvedAnswer, recording, recordingAvailable, recordingUnavailable }} />)}
       </div>
 
       <p className="flex items-center gap-2 px-1 text-sm text-[#7b827e]"><Mic className="size-4 text-[#d76a47]" />{pendingNote}</p>

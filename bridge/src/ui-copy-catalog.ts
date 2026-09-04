@@ -5702,6 +5702,14 @@ export const UI_COPY_ENTRIES: UiCopyEntrySeed[] = [
   },
   {
     "screenKey": "speaking.notebook",
+    "variableName": "improve",
+    "sourceText": "추가 보완 포인트",
+    "draftText": "추가 보완 포인트",
+    "description": "components/speaking-notebook.tsx 세션 종합 보완 포인트 라벨",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.notebook",
     "variableName": "recording_label",
     "sourceText": "MY RECORDING",
     "draftText": "MY RECORDING",
