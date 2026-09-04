@@ -5710,6 +5710,22 @@ export const UI_COPY_ENTRIES: UiCopyEntrySeed[] = [
   },
   {
     "screenKey": "speaking.notebook",
+    "variableName": "recording_available",
+    "sourceText": "녹음본 있음",
+    "draftText": "녹음본 있음",
+    "description": "components/speaking-notebook.tsx 재생 가능한 녹음본 존재 태그",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.notebook",
+    "variableName": "recording_unavailable",
+    "sourceText": "연결된 녹음본이 없습니다. 전사문과 피드백은 계속 확인할 수 있어요.",
+    "draftText": "연결된 녹음본이 없습니다. 전사문과 피드백은 계속 확인할 수 있어요.",
+    "description": "components/speaking-notebook.tsx 녹음본 미보관 안내",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.notebook",
     "variableName": "pending_note",
     "sourceText": "음성 처리와 채점 연동 후에는 실제 완료 기록만 이 목록에 저장됩니다.",
     "draftText": "음성 처리와 채점 연동 후에는 실제 완료 기록만 이 목록에 저장됩니다.",

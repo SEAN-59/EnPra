@@ -12,6 +12,7 @@ type NotebookEntry = {
   title: string;
   completedAt: string;
   duration: number;
+  hasRecording: boolean;
   status: '보완 필요' | '복습 권장' | '확인 완료';
   focuses: string[];
   question: string;
@@ -30,6 +31,7 @@ const previewEntries: NotebookEntry[] = [
     title: 'Public spaces in modern cities',
     completedAt: '오늘',
     duration: 42,
+    hasRecording: false,
     status: '보완 필요',
     focuses: ['근거 확장', '예시 구체화'],
     question: 'Why do you think public spaces are important in modern cities?',
@@ -46,6 +48,7 @@ const previewEntries: NotebookEntry[] = [
     title: 'Describe a public park you enjoyed visiting',
     completedAt: '어제',
     duration: 98,
+    hasRecording: true,
     status: '복습 권장',
     focuses: ['시간 흐름', '연결 표현'],
     question: 'Describe a public park you enjoyed visiting.',
@@ -62,6 +65,7 @@ const previewEntries: NotebookEntry[] = [
     title: 'Your home town',
     completedAt: '3일 전',
     duration: 31,
+    hasRecording: false,
     status: '확인 완료',
     focuses: ['현재완료', '대조 표현'],
     question: 'Has your home town changed much in recent years?',
@@ -116,7 +120,7 @@ function RecordingPlayer({ duration, label }: { duration: number; label: string 
   );
 }
 
-function EntryCard({ entry, opened, onToggle, labels }: { entry: NotebookEntry; opened: boolean; onToggle: () => void; labels: { question: string; answer: string; feedback: string; review: string; strength: string; improve: string; recording: string } }) {
+function EntryCard({ entry, opened, onToggle, labels }: { entry: NotebookEntry; opened: boolean; onToggle: () => void; labels: { question: string; answer: string; feedback: string; review: string; strength: string; improve: string; recording: string; recordingAvailable: string; recordingUnavailable: string } }) {
   const statusStyle = entry.status === '보완 필요'
     ? 'bg-[#fff1eb] text-[#b25336]'
     : entry.status === '복습 권장'
@@ -131,7 +135,11 @@ function EntryCard({ entry, opened, onToggle, labels }: { entry: NotebookEntry; 
           <span className="mt-2 block truncate font-serif text-xl text-[#24333a] sm:text-2xl">{entry.title}</span>
           <span className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-[#747d77]"><span>{entry.completedAt}</span><span className="text-[#cac2b6]">•</span><span>내 답변 {formatTime(entry.duration)}</span></span>
         </span>
-        <span className="flex shrink-0 items-center gap-3"><span className={`hidden rounded-full px-2.5 py-1 text-xs font-bold sm:inline-flex ${statusStyle}`}>{entry.status}</span><ChevronRight className={`size-5 text-[#78827c] transition-transform ${opened ? 'rotate-90' : ''}`} /></span>
+        <span className="flex shrink-0 items-center gap-2 sm:gap-3">
+          {entry.hasRecording && <span className="inline-flex items-center gap-1.5 rounded-full border border-[#cfe1d4] bg-[#eef7f0] px-2.5 py-1 text-xs font-bold text-[#38634f]"><Mic className="size-3.5" />{labels.recordingAvailable}</span>}
+          <span className={`hidden rounded-full px-2.5 py-1 text-xs font-bold sm:inline-flex ${statusStyle}`}>{entry.status}</span>
+          <ChevronRight className={`size-5 text-[#78827c] transition-transform ${opened ? 'rotate-90' : ''}`} />
+        </span>
       </button>
       {opened && <div className="border-t border-[#ece5da] px-5 py-6 sm:px-6">
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1.1fr)_minmax(260px,.9fr)]">
@@ -142,7 +150,9 @@ function EntryCard({ entry, opened, onToggle, labels }: { entry: NotebookEntry; 
             </section>
             <section>
               <p className="text-xs font-bold tracking-[.14em] text-[#d76a47]">{labels.answer}</p>
-              <div className="mt-3"><RecordingPlayer duration={entry.duration} label={labels.recording} /></div>
+              {entry.hasRecording
+                ? <div className="mt-3"><RecordingPlayer duration={entry.duration} label={labels.recording} /></div>
+                : <p className="mt-3 flex items-center gap-2 rounded-2xl border border-dashed border-[#d9d3c7] bg-[#fbfaf6] px-4 py-3 text-sm leading-6 text-[#747d77]"><Mic className="size-4 shrink-0 text-[#a1aaa4]" />{labels.recordingUnavailable}</p>}
               <p className="mt-3 rounded-2xl border border-[#e4ddd2] bg-[#fbfaf6] p-4 text-sm leading-7 text-[#42514f]">{entry.transcript}</p>
             </section>
           </div>
@@ -174,6 +184,8 @@ export function SpeakingNotebook() {
   const strength = useStaticCopy('speaking.notebook', 'strength', '잘한 점');
   const improve = useStaticCopy('speaking.notebook', 'improve', '다음에 보완할 점');
   const recording = useStaticCopy('speaking.notebook', 'recording_label', 'MY RECORDING');
+  const recordingAvailable = useStaticCopy('speaking.notebook', 'recording_available', '녹음본 있음');
+  const recordingUnavailable = useStaticCopy('speaking.notebook', 'recording_unavailable', '연결된 녹음본이 없습니다. 전사문과 피드백은 계속 확인할 수 있어요.');
   const pendingNote = useStaticCopy('speaking.notebook', 'pending_note', '음성 처리와 채점 연동 후에는 실제 완료 기록만 이 목록에 저장됩니다.');
 
   return (
@@ -184,7 +196,7 @@ export function SpeakingNotebook() {
       </header>
 
       <div className="space-y-3">
-        {previewEntries.map((entry) => <EntryCard key={entry.id} entry={entry} opened={openedId === entry.id} onToggle={() => setOpenedId((current) => current === entry.id ? null : entry.id)} labels={{ question, answer, feedback, review, strength, improve, recording }} />)}
+        {previewEntries.map((entry) => <EntryCard key={entry.id} entry={entry} opened={openedId === entry.id} onToggle={() => setOpenedId((current) => current === entry.id ? null : entry.id)} labels={{ question, answer, feedback, review, strength, improve, recording, recordingAvailable, recordingUnavailable }} />)}
       </div>
 
       <p className="flex items-center gap-2 px-1 text-sm text-[#7b827e]"><Mic className="size-4 text-[#d76a47]" />{pendingNote}</p>
