@@ -5440,6 +5440,14 @@ export const UI_COPY_ENTRIES: UiCopyEntrySeed[] = [
   },
   {
     "screenKey": "speaking.part2",
+    "variableName": "card_translation",
+    "sourceText": "카드 번역 보기",
+    "draftText": "카드 번역 보기",
+    "description": "components/speaking-part-two-prototype.tsx 카드 답변 힌트 메뉴",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.part2",
     "variableName": "development_example",
     "sourceText": "전개 예시",
     "draftText": "전개 예시",
