@@ -130,6 +130,12 @@ export const UI_COPY_SCREENS: UiCopyScreenSeed[] = [
     "sortOrder": 330
   },
   {
+    "screenKey": "speaking.part2",
+    "displayName": "SPEAKING · Part 2",
+    "routePath": "/speaking/part2",
+    "sortOrder": 340
+  },
+  {
     "screenKey": "admin",
     "displayName": "MANAGE · 서비스 관리",
     "routePath": "/admin",
@@ -5254,6 +5260,174 @@ export const UI_COPY_ENTRIES: UiCopyEntrySeed[] = [
     "sourceText": "사용자 권한과 계정 정보 관리는 다음 단계에서 추가합니다.",
     "draftText": "사용자 권한과 계정 정보 관리는 다음 단계에서 추가합니다.",
     "description": "components/manage-copy-client.tsx 사용자 관리 준비 화면의 안내",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.practice",
+    "variableName": "part_two",
+    "sourceText": "Part 2 카드 연습",
+    "draftText": "Part 2 카드 연습",
+    "description": "components/speaking-practice.tsx Part 2 이동 버튼",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.practice",
+    "variableName": "part_one",
+    "sourceText": "Part 1 연습",
+    "draftText": "Part 1 연습",
+    "description": "components/speaking-practice.tsx Part 1 이동 버튼",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.part2",
+    "variableName": "title",
+    "sourceText": "Part 2 카드 연습.",
+    "draftText": "Part 2 카드 연습.",
+    "description": "components/speaking-part-two-prototype.tsx 제목",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.part2",
+    "variableName": "description",
+    "sourceText": "카드를 열고 핵심을 메모한 뒤, 하나의 주제를 길게 설명해 보세요.",
+    "draftText": "카드를 열고 핵심을 메모한 뒤, 하나의 주제를 길게 설명해 보세요.",
+    "description": "components/speaking-part-two-prototype.tsx 안내",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.part2",
+    "variableName": "level_badge",
+    "sourceText": "6.5A · 학습하기",
+    "draftText": "6.5A · 학습하기",
+    "description": "components/speaking-part-two-prototype.tsx 단계 표기",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.part2",
+    "variableName": "part_label",
+    "sourceText": "PART 2 · LONG TURN",
+    "draftText": "PART 2 · LONG TURN",
+    "description": "components/speaking-part-two-prototype.tsx 상단 구분 문구",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.part2",
+    "variableName": "part_description",
+    "sourceText": "카드 준비 · 발화 · 연계 질문",
+    "draftText": "카드 준비 · 발화 · 연계 질문",
+    "description": "components/speaking-part-two-prototype.tsx 상단 안내",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.part2",
+    "variableName": "cue_card",
+    "sourceText": "CUE CARD",
+    "draftText": "CUE CARD",
+    "description": "components/speaking-part-two-prototype.tsx 카드 구분 문구",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.part2",
+    "variableName": "card_open_instruction",
+    "sourceText": "카드를 열면 준비 시간이 시작됩니다.",
+    "draftText": "카드를 열면 준비 시간이 시작됩니다.",
+    "description": "components/speaking-part-two-prototype.tsx 카드 열기 안내",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.part2",
+    "variableName": "card_back_instruction",
+    "sourceText": "카드를 눌러 주제를 확인하세요",
+    "draftText": "카드를 눌러 주제를 확인하세요",
+    "description": "components/speaking-part-two-prototype.tsx 카드 뒷면 안내",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.part2",
+    "variableName": "memo_title",
+    "sourceText": "PRIVATE NOTES",
+    "draftText": "PRIVATE NOTES",
+    "description": "components/speaking-part-two-prototype.tsx 메모 제목",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.part2",
+    "variableName": "memo_before_open",
+    "sourceText": "카드를 열면 1분 30초 동안 메모할 수 있어요.",
+    "draftText": "카드를 열면 1분 30초 동안 메모할 수 있어요.",
+    "description": "components/speaking-part-two-prototype.tsx 메모 시작 전 안내",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.part2",
+    "variableName": "memo_during_prepare",
+    "sourceText": "핵심어만 적어 보세요. 이 메모는 채점에 사용되지 않습니다.",
+    "draftText": "핵심어만 적어 보세요. 이 메모는 채점에 사용되지 않습니다.",
+    "description": "components/speaking-part-two-prototype.tsx 메모 안내",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.part2",
+    "variableName": "memo_after_lock",
+    "sourceText": "발화가 시작되어 메모가 잠겼어요. 세션이 끝나면 자동으로 폐기됩니다.",
+    "draftText": "발화가 시작되어 메모가 잠겼어요. 세션이 끝나면 자동으로 폐기됩니다.",
+    "description": "components/speaking-part-two-prototype.tsx 메모 잠금 안내",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.part2",
+    "variableName": "memo_limit",
+    "sourceText": "최대 6줄 · 300자 · 서버에 저장되지 않음",
+    "draftText": "최대 6줄 · 300자 · 서버에 저장되지 않음",
+    "description": "components/speaking-part-two-prototype.tsx 메모 제한 안내",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.part2",
+    "variableName": "recording_processing",
+    "sourceText": "답변 처리 중…",
+    "draftText": "답변 처리 중…",
+    "description": "components/speaking-part-two-prototype.tsx 처리 상태",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.part2",
+    "variableName": "followup_instruction",
+    "sourceText": "질문을 듣고 답변을 녹음하세요.",
+    "draftText": "질문을 듣고 답변을 녹음하세요.",
+    "description": "components/speaking-part-two-prototype.tsx 추가 질문 안내",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.part2",
+    "variableName": "followup_footer",
+    "sourceText": "추가 질문에는 별도 메모 없이 바로 답해 보세요.",
+    "draftText": "추가 질문에는 별도 메모 없이 바로 답해 보세요.",
+    "description": "components/speaking-part-two-prototype.tsx 추가 질문 발화 안내",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.part2",
+    "variableName": "complete_title",
+    "sourceText": "카드 연습을 마쳤어요.",
+    "draftText": "카드 연습을 마쳤어요.",
+    "description": "components/speaking-part-two-prototype.tsx 완료 제목",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.part2",
+    "variableName": "complete_description",
+    "sourceText": "메모는 저장하지 않고 폐기했어요. 음성 처리 연결 후 이 자리에 답변 분석과 최종 피드백이 표시됩니다.",
+    "draftText": "메모는 저장하지 않고 폐기했어요. 음성 처리 연결 후 이 자리에 답변 분석과 최종 피드백이 표시됩니다.",
+    "description": "components/speaking-part-two-prototype.tsx 완료 안내",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.part2",
+    "variableName": "restart",
+    "sourceText": "새 카드 연습",
+    "draftText": "새 카드 연습",
+    "description": "components/speaking-part-two-prototype.tsx 다시 시작 버튼",
     "textFormat": "plain"
   }
 ];

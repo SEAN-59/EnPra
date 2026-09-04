@@ -24,6 +24,7 @@ function screenKeysForPath(pathname: string) {
   if (pathname === '/speaking/practice') return [...keys, 'speaking.common', 'speaking.practice'];
   if (pathname === '/speaking/notebook') return [...keys, 'speaking.common', 'speaking.notebook'];
   if (pathname.startsWith('/speaking/part1')) return [...keys, 'speaking.part1'];
+  if (pathname.startsWith('/speaking/part2')) return [...keys, 'speaking.part2'];
   return keys;
 }
 
