@@ -3,7 +3,6 @@
 import {
   Check,
   CircleHelp,
-  Headphones,
   Info,
   Mic,
   Pause,
@@ -109,6 +108,90 @@ function PlaybackSpeakerIcon({ playing }: { playing: boolean }) {
   );
 }
 
+function formatRecordingTime(seconds: number) {
+  return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
+function RecordingPlayer({
+  durationSeconds,
+  dark = false,
+  showLabel = false,
+}: {
+  durationSeconds: number;
+  dark?: boolean;
+  showLabel?: boolean;
+}) {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const safeDuration = Math.max(1, durationSeconds);
+  const progress = Math.min(100, (elapsedSeconds / safeDuration) * 100);
+
+  useEffect(() => {
+    setElapsedSeconds((current) => Math.min(current, safeDuration));
+  }, [safeDuration]);
+
+  useEffect(() => {
+    if (!isPlaying) return;
+    const timer = window.setInterval(() => {
+      setElapsedSeconds((current) => {
+        if (current >= safeDuration) {
+          setIsPlaying(false);
+          return safeDuration;
+        }
+        return Math.min(safeDuration, current + 0.25);
+      });
+    }, 250);
+    return () => window.clearInterval(timer);
+  }, [isPlaying, safeDuration]);
+
+  const togglePlayback = () => {
+    if (elapsedSeconds >= safeDuration) setElapsedSeconds(0);
+    setIsPlaying((current) => !current);
+  };
+
+  const palette = dark
+    ? {
+        button: 'bg-white text-[#1d2935] hover:bg-[#fff7f2]',
+        track: 'bg-white/20',
+        fill: 'bg-[#f0b197]',
+        time: 'text-white/65',
+        label: 'text-white/85',
+      }
+    : {
+        button: 'border border-[#d7d0c4] bg-white text-[#d76a47] hover:bg-[#fff7f2]',
+        track: 'bg-[#e8e1d6]',
+        fill: 'bg-[#d76a47]',
+        time: 'text-[#7b827e]',
+        label: 'text-[#34434b]',
+      };
+
+  return (
+    <div className="flex min-w-0 items-center gap-2.5">
+      <button
+        type="button"
+        aria-label={isPlaying ? '내 녹음 일시정지' : '내 녹음 재생'}
+        aria-pressed={isPlaying}
+        onClick={togglePlayback}
+        className={`grid size-9 shrink-0 place-items-center rounded-full transition-colors ${palette.button}`}
+      >
+        {isPlaying ? <Pause className="size-4 fill-current" /> : <Play className="size-4 fill-current" />}
+      </button>
+      {showLabel && <span className={`shrink-0 text-sm font-bold ${palette.label}`}>내 녹음 듣기</span>}
+      <div
+        role="progressbar"
+        aria-label="내 녹음 재생 진행률"
+        aria-valuemin={0}
+        aria-valuemax={safeDuration}
+        aria-valuenow={Math.floor(elapsedSeconds)}
+        className={`h-1.5 min-w-12 flex-1 overflow-hidden rounded-full ${palette.track}`}
+      >
+        <div className={`h-full rounded-full ${palette.fill} transition-[width] duration-200 ease-linear`} style={{ width: `${progress}%` }} />
+      </div>
+      <span className={`shrink-0 text-xs tabular-nums ${palette.time}`}>{formatRecordingTime(Math.floor(elapsedSeconds))} / {formatRecordingTime(safeDuration)}</span>
+    </div>
+  );
+}
+
 function Countdown({ open, onDone }: { open: boolean; onDone: () => void }) {
   const [count, setCount] = useState(2);
   useDocumentScrollLock(open);
@@ -159,7 +242,7 @@ function ResultDialog({ turn, open, onClose }: { turn: Turn; open: boolean; onCl
           <button type="button" onClick={() => setTab('feedback')} className={`flex-1 whitespace-nowrap border-b-2 px-2 py-3 text-xs font-bold sm:flex-none sm:px-3 sm:text-sm ${tab === 'feedback' ? 'border-[#d76a47] text-[#d76a47]' : 'border-transparent text-[#7b827e]'}`}>피드백 · 개선</button>
         </div>
         <div className="min-h-64 px-5 py-6 sm:px-7">
-          {tab === 'question' ? <div className="space-y-5"><section><p className="text-xs font-bold tracking-[0.14em] text-[#d76a47]">QUESTION</p><p className="mt-3 font-serif text-xl leading-8 text-[#2b393d]">{turn.prompt}</p></section><section className="rounded-2xl bg-[#eff6f1] p-4"><p className="text-xs font-bold tracking-[0.14em] text-[#547263]">한국어 뜻</p><p className="mt-2 leading-7 text-[#40504d]">{turn.translation}</p></section></div> : tab === 'answer' ? <div><p className="text-xs font-bold tracking-[0.14em] text-[#7d8780]">TRANSCRIPT</p><p className="mt-3 font-serif text-xl leading-8 text-[#2b393d]">{turn.transcript}</p><button type="button" className="mt-6 inline-flex items-center gap-2 rounded-xl border border-[#d7d0c4] bg-white px-4 py-2.5 text-sm font-bold text-[#34434b] hover:bg-[#f7f4ed]"><Headphones className="size-4 text-[#d76a47]" />내 녹음 듣기</button></div> : <div className="space-y-5"><section><p className="text-xs font-bold tracking-[0.14em] text-[#d76a47]">ASSESSMENT</p><p className="mt-2 leading-7 text-[#40504d]">{turn.feedback.summary}</p></section><section className="rounded-2xl bg-[#fff4ee] p-4"><p className="text-xs font-bold tracking-[0.14em] text-[#c85f40]">IMPROVE NEXT</p><p className="mt-2 leading-7 text-[#5e5049]">{turn.feedback.improve}</p></section></div>}
+          {tab === 'question' ? <div className="space-y-5"><section><p className="text-xs font-bold tracking-[0.14em] text-[#d76a47]">QUESTION</p><p className="mt-3 font-serif text-xl leading-8 text-[#2b393d]">{turn.prompt}</p></section><section className="rounded-2xl bg-[#eff6f1] p-4"><p className="text-xs font-bold tracking-[0.14em] text-[#547263]">한국어 뜻</p><p className="mt-2 leading-7 text-[#40504d]">{turn.translation}</p></section></div> : tab === 'answer' ? <div><p className="text-xs font-bold tracking-[0.14em] text-[#7d8780]">TRANSCRIPT</p><p className="mt-3 font-serif text-xl leading-8 text-[#2b393d]">{turn.transcript}</p><div className="mt-6 rounded-2xl border border-[#d7d0c4] bg-white px-4 py-3"><RecordingPlayer durationSeconds={42} showLabel /></div></div> : <div className="space-y-5"><section><p className="text-xs font-bold tracking-[0.14em] text-[#d76a47]">ASSESSMENT</p><p className="mt-2 leading-7 text-[#40504d]">{turn.feedback.summary}</p></section><section className="rounded-2xl bg-[#fff4ee] p-4"><p className="text-xs font-bold tracking-[0.14em] text-[#c85f40]">IMPROVE NEXT</p><p className="mt-2 leading-7 text-[#5e5049]">{turn.feedback.improve}</p></section></div>}
         </div>
       </section>
     </>
@@ -289,7 +372,7 @@ export function SpeakingPartOnePrototype() {
                 {selectedHint === 'structure' && <div className="mt-4 rounded-xl border border-[#f1d5c8] bg-[#fff9f5] p-3 text-sm leading-6 text-[#5a5048]"><span className="mr-2 text-xs font-bold tracking-[0.12em] text-[#d76a47]">HINT</span>Answer directly, then add one short reason or example.</div>}
               </article>
 
-              {(stage === 'recorded' || stage === 'processing' || stage === 'feedback') && <article className="ml-auto max-w-[90%] rounded-[1.5rem] rounded-tr-md bg-[#1d2935] p-4 text-[#fffdf8] shadow-sm sm:max-w-[76%] sm:p-5"><div className="flex items-center gap-3"><span className={`relative grid size-10 place-items-center rounded-2xl bg-white/10 ${stage === 'processing' ? 'text-[#f0b197]' : ''}`}>{stage === 'processing' && <span className="absolute inset-1 rounded-xl border border-[#f0b197] animate-ping" />}<Mic className={`relative size-5 ${stage === 'processing' ? 'animate-pulse' : ''}`} /></span><div><p className="text-[10px] font-bold tracking-[0.16em] text-[#f0b197]">MY RECORDING</p><p className="mt-1 text-sm font-semibold">{stage === 'processing' ? '답변 처리 중…' : `임시 녹음 · ${String(audioSeconds || 42).padStart(2, '0')}초`}</p></div></div><div className="mt-4 flex items-center gap-2"><button type="button" className="grid size-8 place-items-center rounded-full bg-white text-[#1d2935]"><Play className="size-4 fill-current" /></button><div className="h-1.5 flex-1 rounded-full bg-white/20"><div className={`h-full rounded-full bg-[#f0b197] ${stage === 'processing' ? 'w-3/4 animate-pulse' : 'w-[42%]'}`} /></div><span className="text-xs text-white/65">00:{String(audioSeconds || 42).padStart(2, '0')}</span></div>{stage === 'feedback' && <button type="button" onClick={() => setResultTurnIndex(turnIndex)} className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-white/25 bg-white/10 px-4 py-2.5 text-sm font-bold hover:bg-white/15"><Info className="size-4" />답변 확인</button>}</article>}
+              {(stage === 'recorded' || stage === 'processing' || stage === 'feedback') && <article className="ml-auto max-w-[90%] rounded-[1.5rem] rounded-tr-md bg-[#1d2935] p-4 text-[#fffdf8] shadow-sm sm:max-w-[76%] sm:p-5"><div className="flex items-center gap-3"><span className={`relative grid size-10 place-items-center rounded-2xl bg-white/10 ${stage === 'processing' ? 'text-[#f0b197]' : ''}`}>{stage === 'processing' && <span className="absolute inset-1 rounded-xl border border-[#f0b197] animate-ping" />}<Mic className={`relative size-5 ${stage === 'processing' ? 'animate-pulse' : ''}`} /></span><div><p className="text-[10px] font-bold tracking-[0.16em] text-[#f0b197]">MY RECORDING</p><p className="mt-1 text-sm font-semibold">{stage === 'processing' ? '답변 처리 중…' : `임시 녹음 · ${String(audioSeconds || 42).padStart(2, '0')}초`}</p></div></div><div className="mt-4">{stage === 'processing' ? <div className="flex items-center gap-2"><span className="grid size-9 place-items-center rounded-full bg-white text-[#1d2935]"><Play className="size-4 fill-current" /></span><div className="h-1.5 flex-1 rounded-full bg-white/20"><div className="h-full w-3/4 rounded-full bg-[#f0b197] animate-pulse" /></div><span className="text-xs text-white/65">처리 중</span></div> : <RecordingPlayer durationSeconds={audioSeconds || 42} dark />}</div>{stage === 'feedback' && <button type="button" onClick={() => setResultTurnIndex(turnIndex)} className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-white/25 bg-white/10 px-4 py-2.5 text-sm font-bold hover:bg-white/15"><Info className="size-4" />답변 확인</button>}</article>}
 
               {stage === 'processing' && <div className="mx-auto flex w-fit items-center gap-2 rounded-full border border-[#eadbcd] bg-[#fffdf8] px-4 py-2 text-sm font-semibold text-[#7b6357]"><Sparkles className="size-4 animate-pulse text-[#d76a47]" />답변을 정리하고 있어요.</div>}
               {stage === 'feedback' && <div className="mx-auto flex w-fit items-center gap-2 rounded-full border border-[#d7e5db] bg-[#eff7f1] px-4 py-2 text-sm font-semibold text-[#38634f]"><Check className="size-4" />다음 질문을 준비했어요.</div>}
