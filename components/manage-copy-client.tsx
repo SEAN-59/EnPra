@@ -22,7 +22,9 @@ const vars = (value: string) => value.split(',').map((item) => item.trim()).filt
 // therefore shown together with the shared shell copy used by that route.
 function previewScopeKeys(screenKey: string) {
   if (screenKey.startsWith('writing.') && screenKey !== 'writing.common') return ['common.shell', 'writing.common', screenKey];
+  if (screenKey.startsWith('speaking.') && screenKey !== 'speaking.common') return ['common.shell', 'speaking.common', screenKey];
   if (screenKey === 'writing.common') return ['common.shell', 'writing.common'];
+  if (screenKey === 'speaking.common') return ['common.shell', 'speaking.common'];
   if (screenKey === 'manage.copy') return ['common.shell', 'admin', 'manage.copy'];
   return screenKey === 'common.shell' || screenKey === 'home.landing' || screenKey === 'mypage' || screenKey === 'connect'
     ? [screenKey]

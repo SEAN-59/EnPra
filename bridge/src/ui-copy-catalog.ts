@@ -100,10 +100,34 @@ export const UI_COPY_SCREENS: UiCopyScreenSeed[] = [
     "sortOrder": 260
   },
   {
-    "screenKey": "speaking.part1",
-    "displayName": "SPEAKING · Part 1",
+    "screenKey": "speaking.common",
+    "displayName": "SPEAKING · 공통",
+    "routePath": "/speaking",
+    "sortOrder": 290
+  },
+  {
+    "screenKey": "speaking.board",
+    "displayName": "SPEAKING · 보드",
     "routePath": "/speaking",
     "sortOrder": 300
+  },
+  {
+    "screenKey": "speaking.practice",
+    "displayName": "SPEAKING · 학습과 테스트",
+    "routePath": "/speaking/practice",
+    "sortOrder": 310
+  },
+  {
+    "screenKey": "speaking.notebook",
+    "displayName": "SPEAKING · 오답노트",
+    "routePath": "/speaking/notebook",
+    "sortOrder": 320
+  },
+  {
+    "screenKey": "speaking.part1",
+    "displayName": "SPEAKING · Part 1",
+    "routePath": "/speaking/part1",
+    "sortOrder": 330
   },
   {
     "screenKey": "admin",
@@ -1590,6 +1614,198 @@ export const UI_COPY_ENTRIES: UiCopyEntrySeed[] = [
     "sourceText": "학습 화면으로",
     "draftText": "학습 화면으로",
     "description": "app/mypage/page.tsx에서 사용하는 고정 문구",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.common",
+    "variableName": "eyebrow",
+    "sourceText": "SPEAKING",
+    "draftText": "SPEAKING",
+    "description": "components/speaking-header.tsx 상단 영역명",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.common",
+    "variableName": "title",
+    "sourceText": "나의 Speaking 진단.",
+    "draftText": "나의 Speaking 진단.",
+    "description": "components/speaking-header.tsx 제목",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.common",
+    "variableName": "description",
+    "sourceText": "말하기 학습과 테스트 기록을 바탕으로 다음 연습을 이어가세요.",
+    "draftText": "말하기 학습과 테스트 기록을 바탕으로 다음 연습을 이어가세요.",
+    "description": "components/speaking-header.tsx 설명",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.common",
+    "variableName": "board",
+    "sourceText": "BOARD",
+    "draftText": "BOARD",
+    "description": "components/speaking-subnav.tsx 보드 탭",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.common",
+    "variableName": "practice",
+    "sourceText": "PRACTICE",
+    "draftText": "PRACTICE",
+    "description": "components/speaking-subnav.tsx 학습 탭",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.common",
+    "variableName": "notebook",
+    "sourceText": "오답노트",
+    "draftText": "오답노트",
+    "description": "components/speaking-subnav.tsx 오답노트 탭",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.board",
+    "variableName": "eyebrow",
+    "sourceText": "CURRENT SPEAKING LEVEL",
+    "draftText": "CURRENT SPEAKING LEVEL",
+    "description": "components/speaking-board.tsx 현재 레벨 카드 라벨",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.board",
+    "variableName": "title",
+    "sourceText": "시작 레벨을 설정하세요.",
+    "draftText": "시작 레벨을 설정하세요.",
+    "description": "components/speaking-board.tsx 시작 카드 제목",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.board",
+    "variableName": "description",
+    "sourceText": "현재 말하기 실력에 맞는 단계부터 연습을 시작합니다.",
+    "draftText": "현재 말하기 실력에 맞는 단계부터 연습을 시작합니다.",
+    "description": "components/speaking-board.tsx 시작 카드 설명",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.board",
+    "variableName": "practice",
+    "sourceText": "학습하기",
+    "draftText": "학습하기",
+    "description": "components/speaking-board.tsx 학습 이동 버튼",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.board",
+    "variableName": "reinforcement",
+    "sourceText": "맞춤 보강 학습",
+    "draftText": "맞춤 보강 학습",
+    "description": "components/speaking-board.tsx 보강 카드 제목",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.board",
+    "variableName": "reinforcement_description",
+    "sourceText": "진단 결과가 쌓이면 보완이 필요한 발음·표현·답변 구조를 이곳에서 안내합니다.",
+    "draftText": "진단 결과가 쌓이면 보완이 필요한 발음·표현·답변 구조를 이곳에서 안내합니다.",
+    "description": "components/speaking-board.tsx 보강 카드 설명",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.practice",
+    "variableName": "eyebrow",
+    "sourceText": "PRACTICE",
+    "draftText": "PRACTICE",
+    "description": "components/speaking-practice.tsx 상단 라벨",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.practice",
+    "variableName": "title",
+    "sourceText": "오늘의 Speaking.",
+    "draftText": "오늘의 Speaking.",
+    "description": "components/speaking-practice.tsx 제목",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.practice",
+    "variableName": "description",
+    "sourceText": "학습과 테스트 모두 실제 질문에 답하며 진행합니다.",
+    "draftText": "학습과 테스트 모두 실제 질문에 답하며 진행합니다.",
+    "description": "components/speaking-practice.tsx 설명",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.practice",
+    "variableName": "learning",
+    "sourceText": "학습하기",
+    "draftText": "학습하기",
+    "description": "components/speaking-practice.tsx 학습 카드 제목",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.practice",
+    "variableName": "learning_description",
+    "sourceText": "힌트와 피드백을 사용해 답변을 확장하는 연습입니다.",
+    "draftText": "힌트와 피드백을 사용해 답변을 확장하는 연습입니다.",
+    "description": "components/speaking-practice.tsx 학습 카드 설명",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.practice",
+    "variableName": "test",
+    "sourceText": "일반 테스트",
+    "draftText": "일반 테스트",
+    "description": "components/speaking-practice.tsx 테스트 카드 제목",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.practice",
+    "variableName": "test_description",
+    "sourceText": "힌트 없이 현재 단계의 말하기 실력을 확인합니다.",
+    "draftText": "힌트 없이 현재 단계의 말하기 실력을 확인합니다.",
+    "description": "components/speaking-practice.tsx 테스트 카드 설명",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.practice",
+    "variableName": "part_one",
+    "sourceText": "Part 1 연습 열기",
+    "draftText": "Part 1 연습 열기",
+    "description": "components/speaking-practice.tsx Part 1 진입 버튼",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.notebook",
+    "variableName": "eyebrow",
+    "sourceText": "SPEAKING NOTEBOOK",
+    "draftText": "SPEAKING NOTEBOOK",
+    "description": "components/speaking-notebook.tsx 상단 라벨",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.notebook",
+    "variableName": "title",
+    "sourceText": "말하기 오답노트",
+    "draftText": "말하기 오답노트",
+    "description": "components/speaking-notebook.tsx 제목",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.notebook",
+    "variableName": "description",
+    "sourceText": "완료한 답변의 전사문과 피드백이 이곳에 쌓입니다.",
+    "draftText": "완료한 답변의 전사문과 피드백이 이곳에 쌓입니다.",
+    "description": "components/speaking-notebook.tsx 설명",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.notebook",
+    "variableName": "empty",
+    "sourceText": "아직 완료한 Speaking 기록이 없습니다.",
+    "draftText": "아직 완료한 Speaking 기록이 없습니다.",
+    "description": "components/speaking-notebook.tsx 빈 상태",
     "textFormat": "plain"
   },
   {

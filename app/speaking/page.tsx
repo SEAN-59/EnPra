@@ -1,6 +1,8 @@
 import { chatGPTSignOutPath, requireChatGPTUser } from '@/app/chatgpt-auth';
 import { AppShell } from '@/components/app-shell';
-import { SpeakingPartOnePrototype } from '@/components/speaking-part-one-prototype';
+import { SpeakingBoard } from '@/components/speaking-board';
+import { SpeakingHeader } from '@/components/speaking-header';
+import { SpeakingSubnav } from '@/components/speaking-subnav';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,9 +15,7 @@ export default async function SpeakingPage() {
       displayName={user.displayName}
       signOutHref={chatGPTSignOutPath('/speaking')}
     >
-      <section className="min-w-0">
-        <SpeakingPartOnePrototype />
-      </section>
+      <section className="min-w-0"><SpeakingHeader /><div className="mt-9"><SpeakingSubnav activeItem="BOARD" /></div><SpeakingBoard /></section>
     </AppShell>
   );
 }
