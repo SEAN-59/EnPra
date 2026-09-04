@@ -15,6 +15,7 @@ export default async function SpeakingSectionPage({ params }: { params: Promise<
   const user = await requireChatGPTUser(`/speaking/${section}`);
   if (section === 'part1') return <AppShell activeSection="SPEAKING" displayName={user.displayName} signOutHref={chatGPTSignOutPath(`/speaking/${section}`)}><section className="min-w-0"><SpeakingPartOnePrototype /></section></AppShell>;
   if (section === 'part2') return <AppShell activeSection="SPEAKING" displayName={user.displayName} signOutHref={chatGPTSignOutPath(`/speaking/${section}`)}><section className="min-w-0"><SpeakingPartTwoPrototype /></section></AppShell>;
+  if (section === 'part3') return <AppShell activeSection="SPEAKING" displayName={user.displayName} signOutHref={chatGPTSignOutPath(`/speaking/${section}`)}><section className="min-w-0"><SpeakingPartOnePrototype variant="part3" /></section></AppShell>;
   if (section !== 'practice' && section !== 'notebook') notFound();
   return <AppShell activeSection="SPEAKING" displayName={user.displayName} signOutHref={chatGPTSignOutPath(`/speaking/${section}`)}><section className="min-w-0"><SpeakingHeader /><div className="mt-9"><SpeakingSubnav activeItem={section === 'practice' ? 'PRACTICE' : 'NOTEBOOK'} /></div>{section === 'practice' ? <SpeakingPractice /> : <SpeakingNotebook />}</section></AppShell>;
 }

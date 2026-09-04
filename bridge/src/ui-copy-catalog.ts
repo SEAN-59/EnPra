@@ -136,6 +136,12 @@ export const UI_COPY_SCREENS: UiCopyScreenSeed[] = [
     "sortOrder": 340
   },
   {
+    "screenKey": "speaking.part3",
+    "displayName": "SPEAKING · Part 3",
+    "routePath": "/speaking/part3",
+    "sortOrder": 350
+  },
+  {
     "screenKey": "admin",
     "displayName": "MANAGE · 서비스 관리",
     "routePath": "/admin",
@@ -5279,6 +5285,14 @@ export const UI_COPY_ENTRIES: UiCopyEntrySeed[] = [
     "textFormat": "plain"
   },
   {
+    "screenKey": "speaking.practice",
+    "variableName": "part_three",
+    "sourceText": "Part 3 심화 대화",
+    "draftText": "Part 3 심화 대화",
+    "description": "components/speaking-practice.tsx Part 3 이동 버튼",
+    "textFormat": "plain"
+  },
+  {
     "screenKey": "speaking.part2",
     "variableName": "title",
     "sourceText": "Part 2 카드 연습.",
@@ -5492,6 +5506,78 @@ export const UI_COPY_ENTRIES: UiCopyEntrySeed[] = [
     "sourceText": "질문이 끝나면 녹음할 수 있습니다.",
     "draftText": "질문이 끝나면 녹음할 수 있습니다.",
     "description": "components/speaking-part-two-prototype.tsx 후속 질문 녹음 제한 안내",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.part3",
+    "variableName": "title",
+    "sourceText": "Part 3 심화 대화 연습.",
+    "draftText": "Part 3 심화 대화 연습.",
+    "description": "components/speaking-part-one-prototype.tsx Part 3 제목",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.part3",
+    "variableName": "description",
+    "sourceText": "Part 2 주제를 넓혀 사회적 관점과 이유를 논리적으로 설명해 보세요.",
+    "draftText": "Part 2 주제를 넓혀 사회적 관점과 이유를 논리적으로 설명해 보세요.",
+    "description": "components/speaking-part-one-prototype.tsx Part 3 안내",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.part3",
+    "variableName": "level",
+    "sourceText": "6.5A · 학습하기",
+    "draftText": "6.5A · 학습하기",
+    "description": "components/speaking-part-one-prototype.tsx Part 3 단계",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.part3",
+    "variableName": "section",
+    "sourceText": "PART 3 · DISCUSSION",
+    "draftText": "PART 3 · DISCUSSION",
+    "description": "components/speaking-part-one-prototype.tsx Part 3 구분 문구",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.part3",
+    "variableName": "section_description",
+    "sourceText": "Part 2 주제를 바탕으로 이어지는 심화 음성 대화",
+    "draftText": "Part 2 주제를 바탕으로 이어지는 심화 음성 대화",
+    "description": "components/speaking-part-one-prototype.tsx Part 3 구역 안내",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.part3",
+    "variableName": "ready_label",
+    "sourceText": "PART 3 READY",
+    "draftText": "PART 3 READY",
+    "description": "components/speaking-part-one-prototype.tsx Part 3 시작 전 구분 문구",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.part3",
+    "variableName": "ready_title",
+    "sourceText": "심화 대화를 시작할 준비가 됐어요.",
+    "draftText": "심화 대화를 시작할 준비가 됐어요.",
+    "description": "components/speaking-part-one-prototype.tsx Part 3 시작 전 제목",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.part3",
+    "variableName": "ready_description",
+    "sourceText": "카운트다운 뒤 Part 2 주제와 연결된 심화 질문이 재생됩니다. 의견, 이유, 비교와 예시를 활용해 답해 보세요.",
+    "draftText": "카운트다운 뒤 Part 2 주제와 연결된 심화 질문이 재생됩니다. 의견, 이유, 비교와 예시를 활용해 답해 보세요.",
+    "description": "components/speaking-part-one-prototype.tsx Part 3 시작 전 안내",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.part3",
+    "variableName": "complete_label",
+    "sourceText": "PART 3 COMPLETE",
+    "draftText": "PART 3 COMPLETE",
+    "description": "components/speaking-part-one-prototype.tsx Part 3 완료 구분 문구",
     "textFormat": "plain"
   }
 ];

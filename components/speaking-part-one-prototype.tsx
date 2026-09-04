@@ -86,6 +86,84 @@ const turns: Turn[] = [
   },
 ];
 
+const partThreeTurns: Turn[] = [
+  {
+    prompt: 'Why do you think public spaces are important in modern cities?',
+    translation: '현대 도시에서 공공장소가 중요한 이유는 무엇이라고 생각하나요?',
+    transcript: 'I think public spaces are important because they give people a place to relax and meet others. They can also make crowded cities feel more liveable.',
+    feedback: {
+      summary: '주장과 두 가지 이유를 자연스럽게 연결했어요.',
+      improve: '두 번째 이유에 실제 도시의 공원이나 광장 같은 예시를 짧게 더해 보세요.',
+      next: 'Should governments spend more money on public parks than commercial facilities?',
+    },
+  },
+  {
+    prompt: 'Should governments spend more money on public parks than commercial facilities?',
+    translation: '정부는 상업 시설보다 공원 같은 공공시설에 더 많은 돈을 써야 할까요?',
+    transcript: 'In my opinion, governments should invest more in public parks because everyone can use them. However, commercial facilities can also create jobs and support local economies.',
+    feedback: {
+      summary: '한쪽 입장을 제시하면서 반대 관점도 함께 다뤘어요.',
+      improve: '정부 예산의 우선순위를 한 문장으로 명확하게 결론 내리면 논리가 더 단단해집니다.',
+      next: 'How can public spaces influence relationships in a community?',
+    },
+  },
+  {
+    prompt: 'How can public spaces influence relationships in a community?',
+    translation: '공공장소는 지역 사회의 관계에 어떤 영향을 줄 수 있나요?',
+    transcript: 'They can help neighbours meet informally and take part in shared activities. As a result, people may feel a stronger sense of belonging to their community.',
+    feedback: {
+      summary: '원인과 결과를 연결해 추상적인 주제를 명확히 설명했어요.',
+      improve: '세대 간 교류나 지역 행사처럼 구체적인 사례를 한 가지 넣어 보세요.',
+      next: 'Do different age groups need different types of public spaces?',
+    },
+  },
+  {
+    prompt: 'Do different age groups need different types of public spaces?',
+    translation: '연령대에 따라 서로 다른 유형의 공공장소가 필요하다고 생각하나요?',
+    transcript: 'Yes, I do. Children need safe places to play, while older people may need quiet areas with easy access and comfortable seating.',
+    feedback: {
+      summary: '연령대를 비교하며 요구를 구체적으로 구분했어요.',
+      improve: '젊은 성인이나 가족을 한 범주 더 언급하면 비교의 폭이 넓어집니다.',
+      next: 'How might public spaces change in the future?',
+    },
+  },
+  {
+    prompt: 'How might public spaces change in the future?',
+    translation: '앞으로 공공장소는 어떻게 변할 것이라고 생각하나요?',
+    transcript: 'I think they will become more flexible and environmentally friendly. For example, cities may create spaces that can be used for both community events and emergency shelters.',
+    feedback: {
+      summary: '미래 예측과 예시를 함께 사용해 답변을 충분히 확장했어요.',
+      improve: '기술이나 기후 변화가 이러한 변화에 미치는 영향까지 연결해 보면 더 높은 수준의 답변이 됩니다.',
+      next: 'Part 3 is complete.',
+    },
+  },
+];
+
+const sessionCopy = {
+  part1: {
+    title: 'Part 1 대화 연습.',
+    description: '질문을 듣고, 직접 녹음한 뒤 답변 흐름과 개선점을 확인하세요.',
+    level: '5.0A · 학습하기',
+    section: 'PART 1 · INTERVIEW',
+    sectionDescription: '친숙한 주제로 이어지는 음성 대화',
+    readyLabel: 'PART 1 READY',
+    readyTitle: '대화를 시작할 준비가 됐어요.',
+    readyDescription: '시작을 누르면 카운트다운 뒤 첫 음성 질문이 재생됩니다. 이후에는 답변을 바탕으로 질문이 이어집니다.',
+    completeLabel: 'PART 1 COMPLETE',
+  },
+  part3: {
+    title: 'Part 3 심화 대화 연습.',
+    description: 'Part 2 주제를 넓혀 사회적 관점과 이유를 논리적으로 설명해 보세요.',
+    level: '6.5A · 학습하기',
+    section: 'PART 3 · DISCUSSION',
+    sectionDescription: 'Part 2 주제를 바탕으로 이어지는 심화 음성 대화',
+    readyLabel: 'PART 3 READY',
+    readyTitle: '심화 대화를 시작할 준비가 됐어요.',
+    readyDescription: '카운트다운 뒤 Part 2 주제와 연결된 심화 질문이 재생됩니다. 의견, 이유, 비교와 예시를 활용해 답해 보세요.',
+    completeLabel: 'PART 3 COMPLETE',
+  },
+} as const;
+
 function Waveform({ active = false }: { active?: boolean }) {
   return (
     <span className={`flex h-6 items-center gap-0.5 ${active ? 'text-[#d76a47]' : 'text-[#8b9791]'}`} aria-hidden="true">
@@ -254,7 +332,10 @@ function ResultDialog({ turn, open, onClose }: { turn: Turn; open: boolean; onCl
   );
 }
 
-export function SpeakingPartOnePrototype() {
+export function SpeakingPartOnePrototype({ variant = 'part1' }: { variant?: 'part1' | 'part3' }) {
+  const isPartThree = variant === 'part3';
+  const sessionTurns = isPartThree ? partThreeTurns : turns;
+  const copy = sessionCopy[variant];
   const [stage, setStage] = useState<SessionStage>('ready');
   const [turnIndex, setTurnIndex] = useState(0);
   const [replays, setReplays] = useState(0);
@@ -264,7 +345,7 @@ export function SpeakingPartOnePrototype() {
   const [audioSeconds, setAudioSeconds] = useState(0);
   const [questionPlaying, setQuestionPlaying] = useState(false);
 
-  const currentTurn = turns[turnIndex];
+  const currentTurn = sessionTurns[turnIndex];
   const spokenMinutes = Math.min(10 * 60 + 30, 162 + turnIndex * 94 + (stage === 'recorded' || stage === 'processing' || stage === 'feedback' ? 42 : 0));
   const spokenTime = `${String(Math.floor(spokenMinutes / 60)).padStart(2, '0')}:${String(spokenMinutes % 60).padStart(2, '0')}`;
 
@@ -297,7 +378,7 @@ export function SpeakingPartOnePrototype() {
   useEffect(() => {
     if (stage !== 'feedback') return;
     const timer = window.setTimeout(() => {
-      if (turnIndex === turns.length - 1) {
+      if (turnIndex === sessionTurns.length - 1) {
         setStage('finished');
         return;
       }
@@ -339,25 +420,25 @@ export function SpeakingPartOnePrototype() {
     <>
       <header>
         <p className="text-xs font-semibold text-[#d76a47] sm:text-sm">SPEAKING</p>
-        <div className="mt-1 flex flex-wrap items-end justify-between gap-4"><div><h1 className="font-serif text-3xl tracking-tight sm:text-5xl">Part 1 대화 연습.</h1><p className="mt-3 max-w-2xl text-sm leading-6 text-[#69736e]">질문을 듣고, 직접 녹음한 뒤 답변 흐름과 개선점을 확인하세요.</p></div><span className="rounded-full border border-[#d6e3db] bg-[#eaf3ed] px-3 py-1.5 text-xs font-bold text-[#38634f]">5.0A · 학습하기</span></div>
+        <div className="mt-1 flex flex-wrap items-end justify-between gap-4"><div><h1 className="font-serif text-3xl tracking-tight sm:text-5xl">{copy.title}</h1><p className="mt-3 max-w-2xl text-sm leading-6 text-[#69736e]">{copy.description}</p></div><span className="rounded-full border border-[#d6e3db] bg-[#eaf3ed] px-3 py-1.5 text-xs font-bold text-[#38634f]">{copy.level}</span></div>
       </header>
 
       <section className="mt-9 overflow-hidden rounded-[2rem] border border-[#dcd6ca] bg-[#fffdf8] shadow-[0_18px_48px_rgba(35,44,43,0.05)]">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e7e0d5] px-5 py-4 sm:px-7">
-          <div className="flex items-center gap-3"><span className="grid size-9 place-items-center rounded-xl bg-[#fff0e9] text-[#d76a47]"><Waves className="size-5" /></span><div><p className="text-xs font-bold tracking-[0.14em] text-[#d76a47]">PART 1 · INTERVIEW</p><p className="mt-0.5 text-sm font-semibold text-[#40504d]">친숙한 주제로 이어지는 음성 대화</p></div></div>
-          <div className="flex items-center gap-2 text-xs font-bold text-[#748079]"><span className="rounded-full bg-[#f2eee6] px-2.5 py-1.5">Turn {stage === 'ready' ? '0' : Math.min(turnIndex + 1, turns.length)} / {turns.length}</span><span className="rounded-full bg-[#f2eee6] px-2.5 py-1.5">내 발화 {spokenTime}</span></div>
+          <div className="flex items-center gap-3"><span className="grid size-9 place-items-center rounded-xl bg-[#fff0e9] text-[#d76a47]"><Waves className="size-5" /></span><div><p className="text-xs font-bold tracking-[0.14em] text-[#d76a47]">{copy.section}</p><p className="mt-0.5 text-sm font-semibold text-[#40504d]">{copy.sectionDescription}</p></div></div>
+          <div className="flex items-center gap-2 text-xs font-bold text-[#748079]"><span className="rounded-full bg-[#f2eee6] px-2.5 py-1.5">Turn {stage === 'ready' ? '0' : Math.min(turnIndex + 1, sessionTurns.length)} / {sessionTurns.length}</span><span className="rounded-full bg-[#f2eee6] px-2.5 py-1.5">내 발화 {spokenTime}</span></div>
         </div>
 
         {stage === 'ready' ? (
           <div className="grid min-h-[540px] place-items-center p-6 sm:p-10">
-            <div className="max-w-md text-center"><span className="mx-auto grid size-16 place-items-center rounded-3xl bg-[#edf4ef] text-[#38634f]"><Volume2 className="size-7" /></span><p className="mt-6 text-xs font-bold tracking-[0.16em] text-[#d76a47]">PART 1 READY</p><h2 className="mt-2 font-serif text-3xl text-[#24333a]">대화를 시작할 준비가 됐어요.</h2><p className="mt-3 leading-7 text-[#68736e]">시작을 누르면 카운트다운 뒤 첫 음성 질문이 재생됩니다. 이후에는 답변을 바탕으로 질문이 이어집니다.</p><Button type="button" size="lg" onClick={prepareFirstQuestion} className="mt-7 h-12 rounded-xl bg-[#1d2935] px-6 text-[#fffdf8] hover:bg-[#344451]"><Sparkles className="size-4" />대화 시작</Button><p className="mt-4 text-xs text-[#89918c]">예상 진행 4~6회 · 종료 기준 내 발화 09:30–10:30</p></div>
+            <div className="max-w-md text-center"><span className="mx-auto grid size-16 place-items-center rounded-3xl bg-[#edf4ef] text-[#38634f]"><Volume2 className="size-7" /></span><p className="mt-6 text-xs font-bold tracking-[0.16em] text-[#d76a47]">{copy.readyLabel}</p><h2 className="mt-2 font-serif text-3xl text-[#24333a]">{copy.readyTitle}</h2><p className="mt-3 leading-7 text-[#68736e]">{copy.readyDescription}</p><Button type="button" size="lg" onClick={prepareFirstQuestion} className="mt-7 h-12 rounded-xl bg-[#1d2935] px-6 text-[#fffdf8] hover:bg-[#344451]"><Sparkles className="size-4" />대화 시작</Button><p className="mt-4 text-xs text-[#89918c]">예상 진행 4~6회 · 종료 기준 내 발화 09:30–10:30</p></div>
           </div>
         ) : stage === 'finished' ? (
-          <div className="grid min-h-[540px] place-items-center p-6 sm:p-10"><div className="max-w-md text-center"><span className="mx-auto grid size-16 place-items-center rounded-3xl bg-[#eaf3ed] text-[#38634f]"><Check className="size-8" /></span><p className="mt-6 text-xs font-bold tracking-[0.16em] text-[#38634f]">PART 1 COMPLETE</p><h2 className="mt-2 font-serif text-3xl text-[#24333a]">대화 연습을 마쳤어요.</h2><p className="mt-3 leading-7 text-[#68736e]">최종 심사와 전체 피드백은 음성 처리 기능을 연결할 때 이 화면에 이어집니다.</p><Button type="button" size="lg" onClick={() => { setTurnIndex(0); setStage('ready'); }} className="mt-7 h-11 rounded-xl bg-[#1d2935] px-5 text-[#fffdf8] hover:bg-[#344451]"><RotateCcw className="size-4" />다시 보기</Button></div></div>
+          <div className="grid min-h-[540px] place-items-center p-6 sm:p-10"><div className="max-w-md text-center"><span className="mx-auto grid size-16 place-items-center rounded-3xl bg-[#eaf3ed] text-[#38634f]"><Check className="size-8" /></span><p className="mt-6 text-xs font-bold tracking-[0.16em] text-[#38634f]">{copy.completeLabel}</p><h2 className="mt-2 font-serif text-3xl text-[#24333a]">대화 연습을 마쳤어요.</h2><p className="mt-3 leading-7 text-[#68736e]">최종 심사와 전체 피드백은 음성 처리 기능을 연결할 때 이 화면에 이어집니다.</p><Button type="button" size="lg" onClick={() => { setTurnIndex(0); setStage('ready'); }} className="mt-7 h-11 rounded-xl bg-[#1d2935] px-5 text-[#fffdf8] hover:bg-[#344451]"><RotateCcw className="size-4" />다시 보기</Button></div></div>
         ) : (
           <div className="min-h-[540px] bg-[#fbfaf6] px-4 py-6 sm:px-7 sm:py-8">
             <div className="mx-auto max-w-3xl space-y-6">
-              {turns.slice(0, turnIndex).map((turn, index) => (
+              {sessionTurns.slice(0, turnIndex).map((turn, index) => (
                 <div key={turn.prompt} className="space-y-3 opacity-80">
                   <article className="mr-auto max-w-[90%] rounded-[1.5rem] rounded-tl-md border border-[#d8e1da] bg-[#f3f8f4] p-4 shadow-sm sm:max-w-[76%] sm:p-5">
                     <p className="text-[10px] font-bold tracking-[0.16em] text-[#547263]">EXAMINER · QUESTION {index + 1}</p>
@@ -393,7 +474,7 @@ export function SpeakingPartOnePrototype() {
       </section>
 
       <Countdown open={stage === 'countdown'} onDone={startQuestion} />
-      {resultTurnIndex !== null && <ResultDialog turn={turns[resultTurnIndex]} open onClose={() => setResultTurnIndex(null)} />}
+      {resultTurnIndex !== null && <ResultDialog turn={sessionTurns[resultTurnIndex]} open onClose={() => setResultTurnIndex(null)} />}
     </>
   );
 }
