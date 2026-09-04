@@ -179,13 +179,13 @@ export function SpeakingPartTwoPrototype() {
         setPrimaryRecordingSeconds(recordingSeconds);
         setPhase('followup');
         setFollowUpIndex(0);
-        setStage('followup');
+        setStage('countdown');
         return;
       }
       if (phase === 'followup' && followUpIndex + 1 < followUpLimit) {
         setCompletedFollowUpSeconds((items) => [...items, recordingSeconds]);
         setFollowUpIndex((current) => current + 1);
-        setStage('followup');
+        setStage('countdown');
         return;
       }
       setStage('complete');
@@ -221,9 +221,9 @@ export function SpeakingPartTwoPrototype() {
   const startFollowUpRecording = () => {
     setQuestionPlaying(false);
     setRecordingSeconds(0);
-    setStage('countdown');
+    setStage('recording');
   };
-  const startFollowUpAfterCountdown = () => setStage('recording');
+  const startAfterCountdown = () => setStage(phase === 'card' ? 'recording' : 'followup');
   const restart = () => {
     setStage('covered'); setPhase('card'); setCardRevealed(false); setMemo(''); setPreparationRemaining(PREPARATION_SECONDS); setRecordingSeconds(0); setPrimaryRecordingSeconds(0); setCompletedFollowUpSeconds([]); setFollowUpIndex(0); setCardHintOpen(false); setSelectedCardHint(null); setFollowupHintOpen(false); setSelectedFollowupHint(null); setQuestionPlaying(false);
   };
@@ -257,7 +257,7 @@ export function SpeakingPartTwoPrototype() {
       {stage === 'recording' && <footer className="border-t border-[#e7e0d5] bg-[#fffdf8] p-4 sm:px-7"><div className="mx-auto flex max-w-3xl items-center gap-3"><div className="min-w-0 flex-1 rounded-2xl border border-[#f0c5b3] bg-[#fff7f3] px-4 py-3"><p className="text-sm font-bold text-[#a74e34]">{isCardResponse ? '주제에 맞춰 길게 이야기해 보세요.' : '짧고 명확하게 의견을 이어 보세요.'}</p></div><button type="button" aria-label="녹음 종료" onClick={finishRecording} className="grid size-14 shrink-0 place-items-center rounded-full bg-[#1d2935] text-white shadow-sm hover:bg-[#344451]"><Pause className="size-5 fill-current" /></button></div></footer>}
       {stage === 'recorded' && <footer className="border-t border-[#e7e0d5] bg-[#fffdf8] p-4 sm:px-7"><div className="mx-auto flex max-w-3xl items-center gap-3"><div className="min-w-0 flex-1"><p className="text-xs font-bold tracking-[0.12em] text-[#7b827e]">RECORDING READY</p><p className="mt-1 text-sm text-[#55615d]">현재 녹음만 임시 보관되어 있어요. 새로 녹음하면 교체됩니다.</p></div><button type="button" onClick={() => { setRecordingSeconds(0); setStage('recording'); }} className="rounded-xl border border-[#d8d0c3] px-3 py-2.5 text-sm font-bold text-[#69736e] hover:bg-[#f2eee6]">다시 녹음</button><button type="button" onClick={sendRecording} className="inline-flex h-11 shrink-0 items-center gap-2 rounded-xl bg-[#1d2935] px-4 text-sm font-bold text-[#fffdf8] hover:bg-[#344451]"><Send className="size-4" />전송</button></div></footer>}
       {stage === 'followup' && <footer className="border-t border-[#e7e0d5] bg-[#fffdf8] p-4 sm:px-7"><div className="mx-auto flex max-w-3xl items-center gap-3"><div className="min-w-0 flex-1 rounded-2xl border border-dashed border-[#dcd4c8] bg-[#fbfaf6] px-4 py-3"><p className="text-sm font-semibold text-[#58645f]">{questionPlaying ? '질문이 끝나면 녹음할 수 있습니다.' : '추가 질문에는 별도 메모 없이 바로 답해 보세요.'}</p></div><button type="button" aria-label="추가 질문 녹음 시작" disabled={questionPlaying} onClick={startFollowUpRecording} className="grid size-14 shrink-0 place-items-center rounded-full bg-[#d76a47] text-white shadow-[0_6px_18px_rgba(215,106,71,0.28)] hover:bg-[#c95b3b] disabled:cursor-not-allowed disabled:bg-[#d9bbb0] disabled:shadow-none"><Mic className="size-6" /></button></div></footer>}
-      <Countdown open={stage === 'countdown'} onDone={startFollowUpAfterCountdown} />
+      <Countdown open={stage === 'countdown'} onDone={startAfterCountdown} />
     </section>
   </>;
 }
