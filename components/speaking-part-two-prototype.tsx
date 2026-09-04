@@ -22,7 +22,7 @@ type ResponsePhase = 'card' | 'followup';
 type CardHint = 'structure' | 'example' | 'translation' | null;
 type FollowupHint = 'text' | 'structure' | null;
 
-const PREPARATION_SECONDS = 90;
+const PREPARATION_SECONDS = 3;
 const CARD_RESPONSE_SECONDS = 130;
 const FOLLOWUP_RESPONSE_SECONDS = 45;
 const MAX_MEMO_CHARACTERS = 300;
@@ -230,7 +230,7 @@ export function SpeakingPartTwoPrototype() {
 
   const cardIsVisible = phase === 'card' && stage !== 'complete';
   const memoEditable = stage === 'preparing';
-  const memoHelper = stage === 'covered' ? '카드를 열면 1분 30초 동안 메모할 수 있어요.' : memoEditable ? '핵심어만 적어 보세요. 이 메모는 채점에 사용되지 않습니다.' : '발화가 시작되어 메모가 잠겼어요. 세션이 끝나면 자동으로 폐기됩니다.';
+  const memoHelper = stage === 'covered' ? '테스트를 위해 3초 동안만 메모할 수 있어요.' : memoEditable ? '핵심어만 적어 보세요. 이 메모는 채점에 사용되지 않습니다.' : '발화가 시작되어 메모가 잠겼어요. 세션이 끝나면 자동으로 폐기됩니다.';
 
   return <><header><p className="text-xs font-semibold text-[#d76a47] sm:text-sm">SPEAKING</p><div className="mt-1 flex flex-wrap items-end justify-between gap-4"><div><h1 className="font-serif text-3xl tracking-tight sm:text-5xl">Part 2 카드 연습.</h1><p className="mt-3 max-w-2xl text-sm leading-6 text-[#69736e]">카드를 열고 핵심을 메모한 뒤, 하나의 주제를 길게 설명해 보세요.</p></div><span className="rounded-full border border-[#d6e3db] bg-[#eaf3ed] px-3 py-1.5 text-xs font-bold text-[#38634f]">6.5A · 학습하기</span></div></header>
 
