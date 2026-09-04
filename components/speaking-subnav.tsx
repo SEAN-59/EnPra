@@ -1,3 +1,5 @@
+'use client';
+
 import { useStaticCopy } from '@/components/static-copy-provider';
 
 type SpeakingSubnavProps = { activeItem: 'BOARD' | 'PRACTICE' | 'NOTEBOOK' };

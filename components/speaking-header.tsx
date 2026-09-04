@@ -1,3 +1,5 @@
+'use client';
+
 import { useStaticCopy } from '@/components/static-copy-provider';
 
 export function SpeakingHeader() {

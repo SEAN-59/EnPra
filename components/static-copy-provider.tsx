@@ -20,7 +20,10 @@ function screenKeysForPath(pathname: string) {
   if (pathname === '/writing/placement') return [...keys, 'writing.placement', 'writing.ui'];
   if (pathname === '/writing/notebook') return [...keys, 'writing.common', 'writing.notebook', 'writing.ui'];
   if (pathname.startsWith('/writing/session/')) return [...keys, 'writing.session', 'writing.ui'];
-  if (pathname === '/speaking') return [...keys, 'speaking.part1'];
+  if (pathname === '/speaking') return [...keys, 'speaking.common', 'speaking.board'];
+  if (pathname === '/speaking/practice') return [...keys, 'speaking.common', 'speaking.practice'];
+  if (pathname === '/speaking/notebook') return [...keys, 'speaking.common', 'speaking.notebook'];
+  if (pathname.startsWith('/speaking/part1')) return [...keys, 'speaking.part1'];
   return keys;
 }
 

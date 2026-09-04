@@ -1,3 +1,5 @@
+'use client';
+
 import { BookOpenCheck } from 'lucide-react';
 import { useStaticCopy } from '@/components/static-copy-provider';
 

@@ -1,3 +1,5 @@
+'use client';
+
 import { ArrowRight, Headphones, Mic, Sparkles } from 'lucide-react';
 import { useStaticCopy } from '@/components/static-copy-provider';
 
