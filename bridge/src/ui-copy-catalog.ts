@@ -5694,10 +5694,10 @@ export const UI_COPY_ENTRIES: UiCopyEntrySeed[] = [
   },
   {
     "screenKey": "speaking.notebook",
-    "variableName": "improve",
-    "sourceText": "다음에 보완할 점",
-    "draftText": "다음에 보완할 점",
-    "description": "components/speaking-notebook.tsx 개선 라벨",
+    "variableName": "improved_answer",
+    "sourceText": "IMPROVED ANSWER",
+    "draftText": "IMPROVED ANSWER",
+    "description": "components/speaking-notebook.tsx 현재 단계 맞춤 개선 답안 라벨",
     "textFormat": "plain"
   },
   {
