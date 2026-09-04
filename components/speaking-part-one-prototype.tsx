@@ -177,15 +177,20 @@ function RecordingPlayer({
         {isPlaying ? <Pause className="size-4 fill-current" /> : <Play className="size-4 fill-current" />}
       </button>
       {showLabel && <span className={`shrink-0 text-sm font-bold ${palette.label}`}>내 녹음 듣기</span>}
-      <div
-        role="progressbar"
-        aria-label="내 녹음 재생 진행률"
-        aria-valuemin={0}
-        aria-valuemax={safeDuration}
-        aria-valuenow={Math.floor(elapsedSeconds)}
-        className={`h-1.5 min-w-12 flex-1 overflow-hidden rounded-full ${palette.track}`}
-      >
-        <div className={`h-full rounded-full ${palette.fill} transition-[width] duration-200 ease-linear`} style={{ width: `${progress}%` }} />
+      <div className="relative h-6 min-w-12 flex-1">
+        <div className={`pointer-events-none absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 overflow-hidden rounded-full ${palette.track}`}>
+          <div className={`h-full rounded-full ${palette.fill} transition-[width] duration-200 ease-linear`} style={{ width: `${progress}%` }} />
+        </div>
+        <input
+          type="range"
+          min={0}
+          max={safeDuration}
+          step={0.25}
+          value={elapsedSeconds}
+          onChange={(event) => setElapsedSeconds(Number(event.target.value))}
+          aria-label="내 녹음 재생 위치"
+          className="absolute inset-0 h-full w-full cursor-pointer appearance-none opacity-0 touch-none"
+        />
       </div>
       <span className={`shrink-0 text-xs tabular-nums ${palette.time}`}>{formatRecordingTime(Math.floor(elapsedSeconds))} / {formatRecordingTime(safeDuration)}</span>
     </div>
