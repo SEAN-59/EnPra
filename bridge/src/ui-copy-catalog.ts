@@ -5429,5 +5429,61 @@ export const UI_COPY_ENTRIES: UiCopyEntrySeed[] = [
     "draftText": "새 카드 연습",
     "description": "components/speaking-part-two-prototype.tsx 다시 시작 버튼",
     "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.part2",
+    "variableName": "card_answer_hint",
+    "sourceText": "답변 구조 힌트",
+    "draftText": "답변 구조 힌트",
+    "description": "components/speaking-part-two-prototype.tsx 카드 답변 힌트 메뉴",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.part2",
+    "variableName": "development_example",
+    "sourceText": "전개 예시",
+    "draftText": "전개 예시",
+    "description": "components/speaking-part-two-prototype.tsx 카드 답변 힌트 메뉴",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.part2",
+    "variableName": "question_text_hint",
+    "sourceText": "질문 텍스트 보기",
+    "draftText": "질문 텍스트 보기",
+    "description": "components/speaking-part-two-prototype.tsx 후속 질문 힌트 메뉴",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.part2",
+    "variableName": "answer_structure_hint",
+    "sourceText": "답변 구조 힌트",
+    "draftText": "답변 구조 힌트",
+    "description": "components/speaking-part-two-prototype.tsx 후속 질문 힌트 메뉴",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.part2",
+    "variableName": "question_playing",
+    "sourceText": "질문을 재생하고 있어요.",
+    "draftText": "질문을 재생하고 있어요.",
+    "description": "components/speaking-part-two-prototype.tsx 후속 질문 재생 상태",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.part2",
+    "variableName": "answer_now",
+    "sourceText": "답변하세요.",
+    "draftText": "답변하세요.",
+    "description": "components/speaking-part-two-prototype.tsx 후속 질문 대기 상태",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.part2",
+    "variableName": "wait_for_question",
+    "sourceText": "질문이 끝나면 녹음할 수 있습니다.",
+    "draftText": "질문이 끝나면 녹음할 수 있습니다.",
+    "description": "components/speaking-part-two-prototype.tsx 후속 질문 녹음 제한 안내",
+    "textFormat": "plain"
   }
 ];
