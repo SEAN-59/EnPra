@@ -1,9 +1,19 @@
 'use client';
 
-import { ArrowRight, ChevronRight, CircleAlert, Headphones, Mic, Pause, Play, Sparkles, Volume2 } from 'lucide-react';
+import { ChevronRight, CircleAlert, Headphones, Mic, Pause, Play, Sparkles, Volume2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { useStaticCopy } from '@/components/static-copy-provider';
+
+type SpeakingTurn = {
+  id: number;
+  label: string;
+  question: string;
+  translation: string;
+  transcript: string;
+  duration: number;
+  hasRecording: boolean;
+};
 
 type NotebookEntry = {
   id: number;
@@ -12,15 +22,11 @@ type NotebookEntry = {
   title: string;
   completedAt: string;
   duration: number;
-  hasRecording: boolean;
   status: '보완 필요' | '복습 권장' | '확인 완료';
   focuses: string[];
-  question: string;
-  translation: string;
-  transcript: string;
+  turns: SpeakingTurn[];
   strength: string;
   improve: string;
-  href: string;
 };
 
 const previewEntries: NotebookEntry[] = [
@@ -30,16 +36,15 @@ const previewEntries: NotebookEntry[] = [
     mode: '학습하기',
     title: 'Public spaces in modern cities',
     completedAt: '오늘',
-    duration: 42,
-    hasRecording: false,
+    duration: 89,
     status: '보완 필요',
     focuses: ['근거 확장', '예시 구체화'],
-    question: 'Why do you think public spaces are important in modern cities?',
-    translation: '현대 도시에서 공공장소가 중요한 이유는 무엇이라고 생각하나요?',
-    transcript: 'I think public spaces are important because they give people a place to relax and meet others. They can also make crowded cities feel more liveable.',
+    turns: [
+      { id: 1, label: 'QUESTION 1', question: 'Why do you think public spaces are important in modern cities?', translation: '현대 도시에서 공공장소가 중요한 이유는 무엇이라고 생각하나요?', transcript: 'I think public spaces are important because they give people a place to relax and meet others. They can also make crowded cities feel more liveable.', duration: 42, hasRecording: false },
+      { id: 2, label: 'QUESTION 2', question: 'Should local governments spend more money on public parks?', translation: '지방 정부는 공원에 더 많은 예산을 써야 할까요?', transcript: 'Yes, I think they should, especially in crowded areas. Parks are free places where people of different ages can exercise and spend time together.', duration: 47, hasRecording: false },
+    ],
     strength: '의견을 먼저 밝힌 뒤 두 가지 이유를 자연스럽게 연결했어요.',
     improve: '공원이나 광장처럼 구체적인 예시를 한 가지 더하면 답변이 더 설득력 있어집니다.',
-    href: '/speaking/part3?mode=learning',
   },
   {
     id: 2,
@@ -47,16 +52,16 @@ const previewEntries: NotebookEntry[] = [
     mode: '일반 테스트',
     title: 'Describe a public park you enjoyed visiting',
     completedAt: '어제',
-    duration: 98,
-    hasRecording: true,
+    duration: 159,
     status: '복습 권장',
     focuses: ['시간 흐름', '연결 표현'],
-    question: 'Describe a public park you enjoyed visiting.',
-    translation: '즐겁게 방문했던 공원 한 곳을 설명해 보세요.',
-    transcript: 'I would like to talk about a park near my home. I visited it with my friends last spring, and we spent the afternoon walking around the lake and having a picnic.',
+    turns: [
+      { id: 1, label: 'CUE CARD ANSWER', question: 'Describe a public park you enjoyed visiting.', translation: '즐겁게 방문했던 공원 한 곳을 설명해 보세요.', transcript: 'I would like to talk about a park near my home. I visited it with my friends last spring, and we spent the afternoon walking around the lake and having a picnic.', duration: 98, hasRecording: true },
+      { id: 2, label: 'FOLLOW-UP 1', question: 'Why do people need public parks in cities?', translation: '도시 사람들에게 공원이 필요한 이유는 무엇인가요?', transcript: 'People need parks because city life can be stressful. A green space gives them a chance to rest, exercise, and spend time with their family.', duration: 27, hasRecording: true },
+      { id: 3, label: 'FOLLOW-UP 2', question: 'How can cities encourage people to use public spaces more often?', translation: '도시는 사람들이 공공장소를 더 자주 이용하도록 어떻게 장려할 수 있을까요?', transcript: 'They could keep parks safe and organise simple community events. If a space is clean and has useful facilities, more people will want to visit it.', duration: 34, hasRecording: true },
+    ],
     strength: '장소, 방문 시점, 활동을 순서대로 말해 긴 답변의 흐름이 안정적이었어요.',
     improve: '마지막에 그 장소가 기억에 남는 이유를 한 문장으로 정리해 보세요.',
-    href: '/speaking/part2?mode=test',
   },
   {
     id: 3,
@@ -64,21 +69,21 @@ const previewEntries: NotebookEntry[] = [
     mode: '학습하기',
     title: 'Your home town',
     completedAt: '3일 전',
-    duration: 31,
-    hasRecording: false,
+    duration: 76,
     status: '확인 완료',
     focuses: ['현재완료', '대조 표현'],
-    question: 'Has your home town changed much in recent years?',
-    translation: '최근 몇 년 사이에 고향이 많이 변했나요?',
-    transcript: 'Yes, it has changed a lot. More tourists visit the city now, so new hotels and public transport have been developed.',
+    turns: [
+      { id: 1, label: 'QUESTION 1', question: 'Has your home town changed much in recent years?', translation: '최근 몇 년 사이에 고향이 많이 변했나요?', transcript: 'Yes, it has changed a lot. More tourists visit the city now, so new hotels and public transport have been developed.', duration: 31, hasRecording: false },
+      { id: 2, label: 'QUESTION 2', question: 'What is one thing you would like to improve in your home town?', translation: '고향에서 개선되었으면 하는 점 한 가지는 무엇인가요?', transcript: 'I would like to see more bicycle lanes because many people use cars even for short trips. It would make the town quieter and cleaner.', duration: 25, hasRecording: false },
+      { id: 3, label: 'QUESTION 3', question: 'Do you think you will live there in the future?', translation: '앞으로도 그곳에서 살 것 같나요?', transcript: 'I might return in the future because my family is there. However, I would like to gain more work experience in a bigger city first.', duration: 20, hasRecording: false },
+    ],
     strength: '현재완료와 변화의 결과를 적절하게 활용해 명확하게 답했어요.',
     improve: '관광객 증가가 주민들의 생활에 미친 영향을 한 문장 더 덧붙여 보세요.',
-    href: '/speaking/part1?mode=learning',
   },
 ];
 
 function formatTime(seconds: number) {
-  return `00:${String(seconds).padStart(2, '0')}`;
+  return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
 }
 
 function RecordingPlayer({ duration, label }: { duration: number; label: string }) {
@@ -120,7 +125,7 @@ function RecordingPlayer({ duration, label }: { duration: number; label: string 
   );
 }
 
-function EntryCard({ entry, opened, onToggle, labels }: { entry: NotebookEntry; opened: boolean; onToggle: () => void; labels: { question: string; answer: string; feedback: string; review: string; strength: string; improve: string; recording: string; recordingAvailable: string; recordingUnavailable: string } }) {
+function EntryCard({ entry, opened, onToggle, labels }: { entry: NotebookEntry; opened: boolean; onToggle: () => void; labels: { dialogue: string; question: string; answer: string; feedback: string; strength: string; improve: string; recording: string; recordingAvailable: string; recordingUnavailable: string } }) {
   const statusStyle = entry.status === '보완 필요'
     ? 'bg-[#fff1eb] text-[#b25336]'
     : entry.status === '복습 권장'
@@ -133,35 +138,33 @@ function EntryCard({ entry, opened, onToggle, labels }: { entry: NotebookEntry; 
         <span className="min-w-0">
           <span className="flex flex-wrap items-center gap-2 text-xs font-bold tracking-[.1em] text-[#d76a47]">{entry.part}<span className="text-[#9aa19c]">·</span><span className="text-[#68736e]">{entry.mode}</span></span>
           <span className="mt-2 block truncate font-serif text-xl text-[#24333a] sm:text-2xl">{entry.title}</span>
-          <span className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-[#747d77]"><span>{entry.completedAt}</span><span className="text-[#cac2b6]">•</span><span>내 답변 {formatTime(entry.duration)}</span></span>
+          <span className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-[#747d77]"><span>{entry.completedAt}</span><span className="text-[#cac2b6]">•</span><span>답변 {entry.turns.length}개 · {formatTime(entry.duration)}</span></span>
         </span>
         <span className="flex shrink-0 items-center gap-2 sm:gap-3">
-          {entry.hasRecording && <span className="inline-flex items-center gap-1.5 rounded-full border border-[#cfe1d4] bg-[#eef7f0] px-2.5 py-1 text-xs font-bold text-[#38634f]"><Mic className="size-3.5" />{labels.recordingAvailable}</span>}
+          {entry.turns.some((turn) => turn.hasRecording) && <span className="inline-flex items-center gap-1.5 rounded-full border border-[#cfe1d4] bg-[#eef7f0] px-2.5 py-1 text-xs font-bold text-[#38634f]"><Mic className="size-3.5" />{labels.recordingAvailable}</span>}
           <span className={`hidden rounded-full px-2.5 py-1 text-xs font-bold sm:inline-flex ${statusStyle}`}>{entry.status}</span>
           <ChevronRight className={`size-5 text-[#78827c] transition-transform ${opened ? 'rotate-90' : ''}`} />
         </span>
       </button>
       {opened && <div className="border-t border-[#ece5da] px-5 py-6 sm:px-6">
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1.1fr)_minmax(260px,.9fr)]">
-          <div className="space-y-5">
-            <section>
-              <p className="text-xs font-bold tracking-[.14em] text-[#d76a47]">{labels.question}</p>
-              <div className="mt-3 rounded-2xl border border-[#dbe4dd] bg-[#f4f8f5] p-4"><div className="flex items-start gap-3"><span className="grid size-9 shrink-0 place-items-center rounded-xl bg-[#38634f] text-white"><Volume2 className="size-4" /></span><div><p className="font-serif text-lg leading-7 text-[#2f4040]">{entry.question}</p><p className="mt-2 text-sm leading-6 text-[#65766c]">{entry.translation}</p></div></div></div>
-            </section>
-            <section>
-              <p className="text-xs font-bold tracking-[.14em] text-[#d76a47]">{labels.answer}</p>
-              {entry.hasRecording
-                ? <div className="mt-3"><RecordingPlayer duration={entry.duration} label={labels.recording} /></div>
-                : <p className="mt-3 flex items-center gap-2 rounded-2xl border border-dashed border-[#d9d3c7] bg-[#fbfaf6] px-4 py-3 text-sm leading-6 text-[#747d77]"><Mic className="size-4 shrink-0 text-[#a1aaa4]" />{labels.recordingUnavailable}</p>}
-              <p className="mt-3 rounded-2xl border border-[#e4ddd2] bg-[#fbfaf6] p-4 text-sm leading-7 text-[#42514f]">{entry.transcript}</p>
-            </section>
-          </div>
-          <aside className="rounded-2xl border border-[#ead9ce] bg-[#fff9f5] p-5">
+          <section className="space-y-4">
+            <p className="text-xs font-bold tracking-[.14em] text-[#d76a47]">{labels.dialogue}</p>
+            {entry.turns.map((turn) => <section key={turn.id} className="rounded-2xl border border-[#e4ddd2] bg-[#fbfaf6] p-4 sm:p-5">
+              <p className="text-[11px] font-bold tracking-[.14em] text-[#7c8b83]">{turn.label}</p>
+              <p className="mt-3 text-xs font-bold tracking-[.14em] text-[#d76a47]">{labels.question}</p>
+              <div className="mt-2 flex items-start gap-3"><span className="grid size-9 shrink-0 place-items-center rounded-xl bg-[#38634f] text-white"><Volume2 className="size-4" /></span><div><p className="font-serif text-lg leading-7 text-[#2f4040]">{turn.question}</p><p className="mt-2 text-sm leading-6 text-[#65766c]">{turn.translation}</p></div></div>
+              <div className="mt-5 border-t border-[#e6ded2] pt-4"><p className="text-xs font-bold tracking-[.14em] text-[#d76a47]">{labels.answer}</p>{turn.hasRecording
+                ? <div className="mt-3"><RecordingPlayer duration={turn.duration} label={labels.recording} /></div>
+                : <p className="mt-3 flex items-center gap-2 rounded-xl border border-dashed border-[#d9d3c7] px-3 py-2.5 text-sm leading-6 text-[#747d77]"><Mic className="size-4 shrink-0 text-[#a1aaa4]" />{labels.recordingUnavailable}</p>}
+                <p className="mt-3 text-sm leading-7 text-[#42514f]">{turn.transcript}</p></div>
+            </section>)}
+          </section>
+          <aside className="h-fit rounded-2xl border border-[#ead9ce] bg-[#fff9f5] p-5">
             <p className="flex items-center gap-2 text-xs font-bold tracking-[.14em] text-[#c85f40]"><Sparkles className="size-4" />{labels.feedback}</p>
             <section className="mt-5"><p className="text-xs font-bold text-[#50625a]">{labels.strength}</p><p className="mt-2 text-sm leading-6 text-[#5d645f]">{entry.strength}</p></section>
             <section className="mt-5 border-t border-[#eddcd1] pt-5"><p className="text-xs font-bold text-[#b25336]">{labels.improve}</p><p className="mt-2 text-sm leading-6 text-[#6c5a51]">{entry.improve}</p></section>
             <div className="mt-5 flex flex-wrap gap-2">{entry.focuses.map((focus) => <span key={focus} className="rounded-full border border-[#ead4c7] bg-white px-2.5 py-1 text-xs font-bold text-[#a25b43]">{focus}</span>)}</div>
-            <a href={entry.href} className="mt-6 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#1d2935] px-4 text-sm font-bold text-[#fffdf8] transition hover:bg-[#344451]">{labels.review}<ArrowRight className="size-4" /></a>
           </aside>
         </div>
       </div>}
@@ -177,10 +180,10 @@ export function SpeakingNotebook() {
   const queueLabel = useStaticCopy('speaking.notebook', 'queue_label', 'REVIEW QUEUE');
   const queueTitle = useStaticCopy('speaking.notebook', 'queue_title', '다시 확인할 답변');
   const queueDescription = useStaticCopy('speaking.notebook', 'queue_description', '완료한 답변은 질문, 녹음, 전사문과 개선 포인트를 함께 확인할 수 있습니다.');
+  const dialogue = useStaticCopy('speaking.notebook', 'dialogue', 'SESSION RESPONSES');
   const question = useStaticCopy('speaking.notebook', 'question', 'QUESTION');
   const answer = useStaticCopy('speaking.notebook', 'answer', 'MY ANSWER');
   const feedback = useStaticCopy('speaking.notebook', 'feedback', 'FEEDBACK · IMPROVE');
-  const review = useStaticCopy('speaking.notebook', 'review', '다시 연습하기');
   const strength = useStaticCopy('speaking.notebook', 'strength', '잘한 점');
   const improve = useStaticCopy('speaking.notebook', 'improve', '다음에 보완할 점');
   const recording = useStaticCopy('speaking.notebook', 'recording_label', 'MY RECORDING');
@@ -196,7 +199,7 @@ export function SpeakingNotebook() {
       </header>
 
       <div className="space-y-3">
-        {previewEntries.map((entry) => <EntryCard key={entry.id} entry={entry} opened={openedId === entry.id} onToggle={() => setOpenedId((current) => current === entry.id ? null : entry.id)} labels={{ question, answer, feedback, review, strength, improve, recording, recordingAvailable, recordingUnavailable }} />)}
+        {previewEntries.map((entry) => <EntryCard key={entry.id} entry={entry} opened={openedId === entry.id} onToggle={() => setOpenedId((current) => current === entry.id ? null : entry.id)} labels={{ dialogue, question, answer, feedback, strength, improve, recording, recordingAvailable, recordingUnavailable }} />)}
       </div>
 
       <p className="flex items-center gap-2 px-1 text-sm text-[#7b827e]"><Mic className="size-4 text-[#d76a47]" />{pendingNote}</p>

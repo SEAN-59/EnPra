@@ -5678,10 +5678,10 @@ export const UI_COPY_ENTRIES: UiCopyEntrySeed[] = [
   },
   {
     "screenKey": "speaking.notebook",
-    "variableName": "review",
-    "sourceText": "다시 연습하기",
-    "draftText": "다시 연습하기",
-    "description": "components/speaking-notebook.tsx 재학습 버튼",
+    "variableName": "dialogue",
+    "sourceText": "SESSION RESPONSES",
+    "draftText": "SESSION RESPONSES",
+    "description": "components/speaking-notebook.tsx 세션 내 질문과 답변 묶음 라벨",
     "textFormat": "plain"
   },
   {
