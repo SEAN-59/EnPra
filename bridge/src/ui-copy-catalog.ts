@@ -5579,5 +5579,53 @@ export const UI_COPY_ENTRIES: UiCopyEntrySeed[] = [
     "draftText": "PART 3 COMPLETE",
     "description": "components/speaking-part-one-prototype.tsx Part 3 완료 구분 문구",
     "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.practice",
+    "variableName": "promotion",
+    "sourceText": "승급 테스트",
+    "draftText": "승급 테스트",
+    "description": "components/speaking-practice.tsx 승급 테스트 버튼",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.practice",
+    "variableName": "demotion",
+    "sourceText": "강등",
+    "draftText": "강등",
+    "description": "components/speaking-practice.tsx 강등 버튼",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.practice",
+    "variableName": "promotion_description",
+    "sourceText": "승급 테스트는 Part 1, Part 2, Part 3을 순서대로 완료해 현재 단계보다 높은 수준을 소화할 수 있는지 확인합니다.",
+    "draftText": "승급 테스트는 Part 1, Part 2, Part 3을 순서대로 완료해 현재 단계보다 높은 수준을 소화할 수 있는지 확인합니다.",
+    "description": "components/speaking-practice.tsx 승급 테스트 안내",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.practice",
+    "variableName": "promotion_pending",
+    "sourceText": "현재 Speaking은 음성 처리와 채점 연동 전 단계입니다. 연결 후 이 창에서 바로 승급 테스트를 시작합니다.",
+    "draftText": "현재 Speaking은 음성 처리와 채점 연동 전 단계입니다. 연결 후 이 창에서 바로 승급 테스트를 시작합니다.",
+    "description": "components/speaking-practice.tsx 승급 테스트 준비 안내",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.practice",
+    "variableName": "demotion_description",
+    "sourceText": "강등은 현재보다 낮은 공개 레벨을 직접 선택하는 방식으로 제공됩니다. 이전 학습 기록은 유지하고, 새 단계의 측정 점수만 다시 시작합니다.",
+    "draftText": "강등은 현재보다 낮은 공개 레벨을 직접 선택하는 방식으로 제공됩니다. 이전 학습 기록은 유지하고, 새 단계의 측정 점수만 다시 시작합니다.",
+    "description": "components/speaking-practice.tsx 강등 안내",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.practice",
+    "variableName": "demotion_pending",
+    "sourceText": "Speaking 레벨 데이터 연동 후 이 창에서 변경할 레벨을 선택할 수 있습니다.",
+    "draftText": "Speaking 레벨 데이터 연동 후 이 창에서 변경할 레벨을 선택할 수 있습니다.",
+    "description": "components/speaking-practice.tsx 강등 준비 안내",
+    "textFormat": "plain"
   }
 ];
