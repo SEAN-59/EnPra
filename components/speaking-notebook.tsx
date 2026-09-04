@@ -26,6 +26,10 @@ type NotebookEntry = {
   targetLevel: string;
   status: '보완 필요' | '복습 권장' | '확인 완료';
   focuses: string[];
+  cueCard?: {
+    topic: string;
+    bullets: string[];
+  };
   turns: SpeakingTurn[];
   strength: string;
   improve: string;
@@ -59,6 +63,10 @@ const previewEntries: NotebookEntry[] = [
     targetLevel: '6.0B',
     status: '복습 권장',
     focuses: ['시간 흐름', '연결 표현'],
+    cueCard: {
+      topic: 'Describe a public park you enjoyed visiting.',
+      bullets: ['where it is', 'when you went there', 'what you did there', 'and explain why you enjoyed visiting it'],
+    },
     turns: [
       { id: 1, label: 'CUE CARD ANSWER', question: 'Describe a public park you enjoyed visiting.', translation: '즐겁게 방문했던 공원 한 곳을 설명해 보세요.', transcript: 'I would like to talk about a park near my home. I visited it with my friends last spring, and we spent the afternoon walking around the lake and having a picnic.', improvedAnswer: 'I would like to describe Riverside Park, which is close to my home. I went there with two friends last spring, and we spent most of the afternoon walking around the lake before having a picnic. What I enjoyed most was the calm atmosphere, because it felt completely different from the busy streets nearby. I still remember it as a relaxing day because we could talk without being interrupted by traffic or crowds.', duration: 98, hasRecording: true },
       { id: 2, label: 'FOLLOW-UP 1', question: 'Why do people need public parks in cities?', translation: '도시 사람들에게 공원이 필요한 이유는 무엇인가요?', transcript: 'People need parks because city life can be stressful. A green space gives them a chance to rest, exercise, and spend time with their family.', improvedAnswer: 'People need public parks because urban life can be stressful and many residents live in small apartments. Green spaces give them somewhere to exercise, relax, or spend time with family without having to spend money.', duration: 27, hasRecording: true },
@@ -130,7 +138,7 @@ function RecordingPlayer({ duration, label }: { duration: number; label: string 
   );
 }
 
-function EntryCard({ entry, opened, onToggle, labels }: { entry: NotebookEntry; opened: boolean; onToggle: () => void; labels: { dialogue: string; question: string; answer: string; feedback: string; strength: string; improve: string; improvedAnswer: string; recording: string; recordingAvailable: string; recordingUnavailable: string } }) {
+function EntryCard({ entry, opened, onToggle, labels }: { entry: NotebookEntry; opened: boolean; onToggle: () => void; labels: { dialogue: string; question: string; answer: string; feedback: string; strength: string; improve: string; improvedAnswer: string; recording: string; recordingAvailable: string; recordingUnavailable: string; cueCard: string; youShouldSay: string; cueCardTiming: string } }) {
   const statusStyle = entry.status === '보완 필요'
     ? 'bg-[#fff1eb] text-[#b25336]'
     : entry.status === '복습 권장'
@@ -155,11 +163,11 @@ function EntryCard({ entry, opened, onToggle, labels }: { entry: NotebookEntry; 
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1.1fr)_minmax(260px,.9fr)]">
           <section className="space-y-4">
             <p className="text-xs font-bold tracking-[.14em] text-[#d76a47]">{labels.dialogue}</p>
+            {entry.cueCard && <section className="rounded-2xl border border-[#e8cdbd] bg-[#fff5ef] p-5 shadow-[0_8px_22px_rgba(190,97,61,0.06)]"><p className="text-xs font-bold tracking-[.16em] text-[#c85f40]">{labels.cueCard}</p><h3 className="mt-3 font-serif text-2xl leading-8 text-[#3c3732]">{entry.cueCard.topic}</h3><p className="mt-5 text-sm font-bold text-[#775d50]">{labels.youShouldSay}</p><ul className="mt-2 space-y-1.5 text-sm leading-6 text-[#5f5149]">{entry.cueCard.bullets.map((bullet) => <li key={bullet} className="flex gap-2"><span className="text-[#d76a47]">•</span><span>{bullet}</span></li>)}</ul><p className="mt-5 border-t border-[#efd8cb] pt-3 text-xs font-bold tracking-[.08em] text-[#9f6a55]">{labels.cueCardTiming}</p></section>}
             {entry.turns.map((turn) => <section key={turn.id} className="rounded-2xl border border-[#e4ddd2] bg-[#fbfaf6] p-4 sm:p-5">
               <p className="text-[11px] font-bold tracking-[.14em] text-[#7c8b83]">{turn.label}</p>
-              <p className="mt-3 text-xs font-bold tracking-[.14em] text-[#d76a47]">{labels.question}</p>
-              <div className="mt-2 flex items-start gap-3"><span className="grid size-9 shrink-0 place-items-center rounded-xl bg-[#38634f] text-white"><Volume2 className="size-4" /></span><div><p className="font-serif text-lg leading-7 text-[#2f4040]">{turn.question}</p><p className="mt-2 text-sm leading-6 text-[#65766c]">{turn.translation}</p></div></div>
-              <div className="mt-5 border-t border-[#e6ded2] pt-4"><p className="text-xs font-bold tracking-[.14em] text-[#d76a47]">{labels.answer}</p>{turn.hasRecording
+              {!(entry.cueCard && turn.id === 1) && <><p className="mt-3 text-xs font-bold tracking-[.14em] text-[#d76a47]">{labels.question}</p><div className="mt-2 flex items-start gap-3"><span className="grid size-9 shrink-0 place-items-center rounded-xl bg-[#38634f] text-white"><Volume2 className="size-4" /></span><div><p className="font-serif text-lg leading-7 text-[#2f4040]">{turn.question}</p><p className="mt-2 text-sm leading-6 text-[#65766c]">{turn.translation}</p></div></div></>}
+              <div className={`${entry.cueCard && turn.id === 1 ? 'mt-4' : 'mt-5 border-t border-[#e6ded2] pt-4'}`}><p className="text-xs font-bold tracking-[.14em] text-[#d76a47]">{labels.answer}</p>{turn.hasRecording
                 ? <div className="mt-3"><RecordingPlayer duration={turn.duration} label={labels.recording} /></div>
                 : <p className="mt-3 flex items-center gap-2 rounded-xl border border-dashed border-[#d9d3c7] px-3 py-2.5 text-sm leading-6 text-[#747d77]"><Mic className="size-4 shrink-0 text-[#a1aaa4]" />{labels.recordingUnavailable}</p>}
                 <p className="mt-3 text-sm leading-7 text-[#42514f]">{turn.transcript}</p>
@@ -194,6 +202,9 @@ export function SpeakingNotebook() {
   const strength = useStaticCopy('speaking.notebook', 'strength', '잘한 점');
   const improve = useStaticCopy('speaking.notebook', 'improve', '추가 보완 포인트');
   const improvedAnswer = useStaticCopy('speaking.notebook', 'improved_answer', 'IMPROVED ANSWER');
+  const cueCard = useStaticCopy('speaking.notebook', 'cue_card', 'CUE CARD');
+  const youShouldSay = useStaticCopy('speaking.notebook', 'you_should_say', 'You should say:');
+  const cueCardTiming = useStaticCopy('speaking.notebook', 'cue_card_timing', '1 minute to prepare · 1–2 minutes to speak');
   const recording = useStaticCopy('speaking.notebook', 'recording_label', 'MY RECORDING');
   const recordingAvailable = useStaticCopy('speaking.notebook', 'recording_available', '녹음본 있음');
   const recordingUnavailable = useStaticCopy('speaking.notebook', 'recording_unavailable', '연결된 녹음본이 없습니다. 전사문과 피드백은 계속 확인할 수 있어요.');
@@ -207,7 +218,7 @@ export function SpeakingNotebook() {
       </header>
 
       <div className="space-y-3">
-        {previewEntries.map((entry) => <EntryCard key={entry.id} entry={entry} opened={openedId === entry.id} onToggle={() => setOpenedId((current) => current === entry.id ? null : entry.id)} labels={{ dialogue, question, answer, feedback, strength, improve, improvedAnswer, recording, recordingAvailable, recordingUnavailable }} />)}
+        {previewEntries.map((entry) => <EntryCard key={entry.id} entry={entry} opened={openedId === entry.id} onToggle={() => setOpenedId((current) => current === entry.id ? null : entry.id)} labels={{ dialogue, question, answer, feedback, strength, improve, improvedAnswer, recording, recordingAvailable, recordingUnavailable, cueCard, youShouldSay, cueCardTiming }} />)}
       </div>
 
       <p className="flex items-center gap-2 px-1 text-sm text-[#7b827e]"><Mic className="size-4 text-[#d76a47]" />{pendingNote}</p>

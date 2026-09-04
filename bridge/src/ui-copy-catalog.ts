@@ -5718,6 +5718,30 @@ export const UI_COPY_ENTRIES: UiCopyEntrySeed[] = [
   },
   {
     "screenKey": "speaking.notebook",
+    "variableName": "cue_card",
+    "sourceText": "CUE CARD",
+    "draftText": "CUE CARD",
+    "description": "components/speaking-notebook.tsx Part 2 큐카드 라벨",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.notebook",
+    "variableName": "you_should_say",
+    "sourceText": "You should say:",
+    "draftText": "You should say:",
+    "description": "components/speaking-notebook.tsx Part 2 큐카드 항목 라벨",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.notebook",
+    "variableName": "cue_card_timing",
+    "sourceText": "1 minute to prepare · 1–2 minutes to speak",
+    "draftText": "1 minute to prepare · 1–2 minutes to speak",
+    "description": "components/speaking-notebook.tsx Part 2 큐카드 시간 안내",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "speaking.notebook",
     "variableName": "recording_available",
     "sourceText": "녹음본 있음",
     "draftText": "녹음본 있음",
