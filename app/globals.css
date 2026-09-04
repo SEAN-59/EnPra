@@ -101,6 +101,16 @@ body { font-family: var(--font-enpra-sans), Arial, sans-serif; }
   [data-slot='button']:not([aria-disabled='true']):active {
     transform: scale(0.96);
   }
+
+  /* Notebook rows are disclosure controls: only their chevron communicates the state. */
+  .notebook-entry-trigger:not(:disabled) {
+    transition: none;
+    will-change: auto;
+  }
+
+  .notebook-entry-trigger:not(:disabled):active {
+    transform: none;
+  }
 }
 
 :root {

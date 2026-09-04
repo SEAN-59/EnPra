@@ -129,7 +129,7 @@ function EntryCard({ entry, opened, onToggle, labels }: { entry: NotebookEntry; 
 
   return (
     <article className="overflow-hidden rounded-2xl border border-[#dcd6ca] bg-[#fffdf8] transition-shadow hover:shadow-[0_10px_28px_rgba(35,44,43,0.04)]">
-      <button type="button" onClick={onToggle} aria-expanded={opened} className="flex w-full items-start justify-between gap-4 p-5 text-left sm:p-6">
+      <button type="button" onClick={onToggle} aria-expanded={opened} className="notebook-entry-trigger flex w-full items-start justify-between gap-4 p-5 text-left sm:p-6">
         <span className="min-w-0">
           <span className="flex flex-wrap items-center gap-2 text-xs font-bold tracking-[.1em] text-[#d76a47]">{entry.part}<span className="text-[#9aa19c]">·</span><span className="text-[#68736e]">{entry.mode}</span></span>
           <span className="mt-2 block truncate font-serif text-xl text-[#24333a] sm:text-2xl">{entry.title}</span>
