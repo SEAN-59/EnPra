@@ -4975,5 +4975,45 @@ export const UI_COPY_ENTRIES: UiCopyEntrySeed[] = [
     "draftText": "문구 저장",
     "description": "components/manage-copy-client.tsx 목업 편집 영역의 저장 버튼",
     "textFormat": "plain"
+  },
+  {
+    "screenKey": "manage.copy",
+    "variableName": "screen_management",
+    "sourceText": "화면 관리",
+    "draftText": "화면 관리",
+    "description": "components/manage-copy-client.tsx 관리 화면의 화면 관리 탭",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "manage.copy",
+    "variableName": "user_management",
+    "sourceText": "사용자 관리",
+    "draftText": "사용자 관리",
+    "description": "components/manage-copy-client.tsx 관리 화면의 사용자 관리 탭",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "manage.copy",
+    "variableName": "user_management_eyebrow",
+    "sourceText": "USERS",
+    "draftText": "USERS",
+    "description": "components/manage-copy-client.tsx 사용자 관리 준비 화면의 상단 구분 문구",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "manage.copy",
+    "variableName": "user_management_title",
+    "sourceText": "사용자 관리",
+    "draftText": "사용자 관리",
+    "description": "components/manage-copy-client.tsx 사용자 관리 준비 화면의 제목",
+    "textFormat": "plain"
+  },
+  {
+    "screenKey": "manage.copy",
+    "variableName": "user_management_description",
+    "sourceText": "사용자 권한과 계정 정보 관리는 다음 단계에서 추가합니다.",
+    "draftText": "사용자 권한과 계정 정보 관리는 다음 단계에서 추가합니다.",
+    "description": "components/manage-copy-client.tsx 사용자 관리 준비 화면의 안내",
+    "textFormat": "plain"
   }
 ];
