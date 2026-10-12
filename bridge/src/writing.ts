@@ -1357,7 +1357,7 @@ export function registerWritingRoutes(
         );
         const reviewed = await reviewNotebookFeedback(codex, user.id, row);
         await pool.query(
-          `UPDATE writing_attempt_results SET feedback_review_status='completed',reviewed_feedback_json=$2,feedback_reviewed_at=NOW(),feedback_review_model='gpt-5.6-luna',feedback_review_version=$3,updated_at=NOW() WHERE id=$1`,
+          `UPDATE writing_attempt_results SET feedback_review_status='completed',reviewed_feedback_json=$2,feedback_reviewed_at=NOW(),feedback_review_model='gpt-6-luna',feedback_review_version=$3,updated_at=NOW() WHERE id=$1`,
           [row.id, JSON.stringify(reviewed), FEEDBACK_REVIEW_VERSION],
         );
         reviewedCount += 1;
@@ -1837,7 +1837,7 @@ export function registerWritingRoutes(
             ? (evaluation.feedback as Record<string, unknown>)
             : {};
         const result = await client.query(
-          `INSERT INTO writing_attempt_results(session_item_id,answer_text,answer_sections_json,answer_word_count,answer_character_count,evaluation_status,evaluated_at,raw_score,hint_penalty_score,effective_score,result_label,error_count,feedback_json,affects_progress,feedback_released_at,evaluation_model,rule_version) VALUES($1,$2,$3,$4,$5,'completed',NOW(),$6,$7,$8,$9,$10,$11,$12,CASE WHEN $13 THEN NOW() ELSE NULL END,'gpt-5.6-luna',$14) RETURNING id`,
+          `INSERT INTO writing_attempt_results(session_item_id,answer_text,answer_sections_json,answer_word_count,answer_character_count,evaluation_status,evaluated_at,raw_score,hint_penalty_score,effective_score,result_label,error_count,feedback_json,affects_progress,feedback_released_at,evaluation_model,rule_version) VALUES($1,$2,$3,$4,$5,'completed',NOW(),$6,$7,$8,$9,$10,$11,$12,CASE WHEN $13 THEN NOW() ELSE NULL END,'gpt-6-luna',$14) RETURNING id`,
           [
             itemId,
             answer,

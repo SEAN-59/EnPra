@@ -14,7 +14,7 @@ WORKDIR /app
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates \
   && rm -rf /var/lib/apt/lists/*
-RUN npm install --global @openai/codex@0.144.6
+RUN npm install --global @openai/codex@0.162.1
 
 COPY --from=build /app/package.json ./
 COPY --from=build /app/node_modules ./node_modules
