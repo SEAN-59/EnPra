@@ -29,7 +29,7 @@ type CompletedTurn = {
   id?: string;
   status?: string;
   error?: { message?: string } | null;
-  items?: Array<{ type?: string; text?: string }>;
+  items?: CompletedItem[];
 };
 
 type CompletedItem = {
@@ -145,12 +145,17 @@ class CodexAppServer {
     if (!turn?.id) return;
 
     const completedItems = this.completedItems.get(turn.id) ?? [];
-    const streamedMessages = [...(this.messageDeltas.get(turn.id)?.values() ?? [])]
-      .filter(Boolean)
-      .map((text) => ({ type: 'agentMessage', text }));
+    const streamedMessages = [...(this.messageDeltas.get(turn.id)?.entries() ?? [])]
+      .filter(([, text]) => Boolean(text))
+      .map(([id, text]) => ({ id, type: 'agentMessage', text }));
     const turnItems = turn.items ?? [];
-    const containsAgentMessage = [...turnItems, ...completedItems].some((item) => item.type === 'agentMessage');
-    turn.items = containsAgentMessage ? [...turnItems, ...completedItems] : [...turnItems, ...completedItems, ...streamedMessages];
+    const seenIds = new Set<string>();
+    turn.items = [...turnItems, ...completedItems, ...streamedMessages].filter((item) => {
+      if (!item.id) return true;
+      if (seenIds.has(item.id)) return false;
+      seenIds.add(item.id);
+      return true;
+    });
     this.completedItems.delete(turn.id);
     this.messageDeltas.delete(turn.id);
 
