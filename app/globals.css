@@ -111,6 +111,53 @@ body { font-family: var(--font-enpra-sans), Arial, sans-serif; }
   .notebook-entry-trigger:not(:disabled):active {
     transform: none;
   }
+
+  /* Card motion belongs to the swipe gesture, not the global button press. */
+  .voca-study-card:not(:disabled):active {
+    transform: none;
+  }
+}
+
+.voca-study-card {
+  perspective: 1200px;
+  cursor: grab;
+  transition: transform 200ms ease;
+}
+
+.voca-study-card[data-dragging='true'] {
+  cursor: grabbing;
+  transition: none;
+}
+
+.voca-study-card:disabled {
+  cursor: wait;
+}
+
+.voca-card-turn {
+  display: grid;
+  transform-style: preserve-3d;
+  transition: transform 360ms ease;
+}
+
+.voca-card-turn[data-flipped='true'] {
+  transform: rotateY(180deg);
+}
+
+.voca-card-face {
+  grid-area: 1 / 1;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.voca-card-face[data-back='true'] {
+  transform: rotateY(180deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .voca-study-card,
+  .voca-card-turn {
+    transition: none;
+  }
 }
 
 :root {

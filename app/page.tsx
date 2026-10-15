@@ -2,7 +2,6 @@ import { BookOpen, CheckCircle2, PenLine, Sparkles } from 'lucide-react';
 
 import { chatGPTSignInPath, chatGPTSignOutPath, getChatGPTUser } from '@/app/chatgpt-auth';
 import { PracticeDashboard } from '@/app/practice-dashboard';
-import { Button } from '@/components/ui/button';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,7 +32,7 @@ export default async function Home() {
           <h1 className="mt-4 max-w-3xl font-serif text-5xl leading-[1.04] tracking-tight sm:text-6xl">영어를,<br />매일 한 문장씩.</h1>
           <p className="mt-6 max-w-xl text-lg leading-8 text-[#5e6965]">EnPra는 짧게 쓰고, 차분하게 돌아보며 영어를 내 것으로 만드는 개인 연습 공간입니다.</p>
           <div className="mt-9 flex flex-col items-end gap-2 self-end text-right">
-            <Button asChild size="lg" className="h-12 w-fit rounded-xl bg-[#1d2935] px-6 text-[#fffdf8] hover:bg-[#344451]"><a href={signInHref} target="_top" className="inline-flex items-center gap-2 whitespace-nowrap">ChatGPT로 학습 시작 <Sparkles className="size-4 shrink-0" aria-hidden="true" /></a></Button>
+            <a href={signInHref} target="_top" className="inline-flex h-12 w-fit items-center gap-2 whitespace-nowrap rounded-xl bg-[#1d2935] px-6 text-[#fffdf8] hover:bg-[#344451]">ChatGPT로 학습 시작 <Sparkles className="size-4 shrink-0" aria-hidden="true" /></a>
             <span className="text-xs text-[#727a76]">별도 회원가입 없이 시작하세요.</span>
           </div>
         </div>

@@ -16,7 +16,7 @@ import {
   Sparkles,
   X,
 } from 'lucide-react';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { Button } from '@/components/ui/button';
@@ -59,6 +59,23 @@ async function api<T>(
   if (!response.ok)
     throw new Error(data.error ?? '요청을 처리하지 못했습니다.');
   return data;
+}
+
+function InitialLoadError({
+  message,
+  retry,
+}: {
+  message: string;
+  retry: () => void;
+}) {
+  return (
+    <section className="mt-7 rounded-3xl border border-[#efd2c7] bg-[#fff8f4] p-6 text-sm text-[#a64b32]">
+      <p role="alert">{message}</p>
+      <Button variant="outline" onClick={retry} className="mt-4">
+        다시 시도
+      </Button>
+    </section>
+  );
 }
 
 function Dialog({
@@ -195,7 +212,7 @@ function HintMenu({
   structureGuide,
 }: {
   hints: Array<any>;
-  onReveal: (hintId: number) => void;
+  onReveal: (hintId: number) => Promise<boolean>;
   structureGuide?: {
     available: boolean;
     used: boolean;
@@ -230,8 +247,8 @@ function HintMenu({
             <button
               key={hint.id}
               type="button"
-              onClick={() => {
-                onReveal(hint.id);
+              onClick={async () => {
+                if (!await onReveal(hint.id)) return;
                 setOpen(false);
                 setSelectedHintId(hint.id);
               }}
@@ -266,7 +283,7 @@ function HintMenu({
         </div>
       )}
       <Dialog
-        open={Boolean(selectedHint)}
+        open={Boolean(selectedHint?.revealed)}
         title={`HINT ${selectedHint?.order ?? ''} · ${selectedHint ? (labels[selectedHint.type] ?? selectedHint.type) : ''}`}
         close={() => setSelectedHintId(null)}
       >
@@ -310,10 +327,12 @@ export function WritingBoardClient() {
   const [dialog, setDialog] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const load = () =>
-    api<Overview>()
+  const load = () => {
+    setError('');
+    return api<Overview>()
       .then(setOverview)
       .catch((cause: Error) => setError(cause.message));
+  };
   useEffect(() => {
     load();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -355,6 +374,8 @@ export function WritingBoardClient() {
       setBusy(false);
     }
   };
+  if (!overview && error)
+    return <InitialLoadError message={error} retry={load} />;
   if (!overview)
     return (
       <section className="mt-7 grid min-h-56 place-items-center rounded-3xl border border-dashed border-[#d7cfc2]">
@@ -533,14 +554,18 @@ export function WritingPracticeClient() {
     id: number;
     type: string;
   } | null>(null);
-  useEffect(() => {
-    api<Overview>()
+  const load = () => {
+    setError('');
+    return api<Overview>()
       .then((data) => {
         setOverview(data);
         setActiveSession(data.activeSession);
       })
       .catch((cause: Error) => setError(cause.message));
-  }, []);
+  };
+  useEffect(() => {
+    load();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const start = async (payload: Record<string, unknown>) => {
     setBusy(true);
     setError('');
@@ -584,6 +609,8 @@ export function WritingPracticeClient() {
       setBusy(false);
     }
   };
+  if (!overview && error)
+    return <InitialLoadError message={error} retry={load} />;
   if (!overview)
     return (
       <section className="mt-7 grid min-h-56 place-items-center rounded-3xl border border-dashed border-[#d7cfc2]">
@@ -716,22 +743,25 @@ export function WritingPracticeClient() {
         close={() => {
           setModal(null);
           setWarning('');
+          setTarget(null);
         }}
       >
         <p className="mt-2 text-sm leading-6 text-[#69736e]">
-          권장 점수에 도달하지 않았더라도 언제든 도전할 수 있습니다.
+          현재 단계의 학습을 충분히 마치지 않았더라도 언제든 도전할 수 있습니다.
         </p>
         <div className="mt-6 space-y-2">
           {higher.map((level) => (
             <button
               key={level}
               disabled={busy}
-              onClick={() =>
+              onClick={() => {
+                setTarget({ level });
+                setWarning('');
                 start({
                   sessionType: 'promotion_test',
                   targetPublicLevel: level,
-                })
-              }
+                });
+              }}
               className="flex w-full items-center justify-between rounded-xl border border-[#ded7ca] px-4 py-3 text-left hover:border-[#e6b7a5]"
             >
               <span className="font-semibold">{displayLevel(level)}</span>
@@ -744,10 +774,19 @@ export function WritingPracticeClient() {
             <AlertCircle className="mr-2 inline size-4" />
             {warning}
             <div className="mt-4 flex gap-2">
-              <Button variant="outline" onClick={() => setWarning('')}>
+              <Button
+                variant="outline"
+                disabled={busy}
+                onClick={() => {
+                  setWarning('');
+                  setTarget(null);
+                  setModal('learning');
+                }}
+              >
                 현재 단계 학습
               </Button>
               <Button
+                disabled={busy || !target}
                 onClick={() =>
                   target &&
                   start({
@@ -772,7 +811,8 @@ export function WritingPracticeClient() {
         }}
       >
         <p className="mt-2 text-sm leading-6 text-[#69736e]">
-          현재 단계 점수는 초기화되며, 이전 학습 기록은 삭제되지 않습니다.
+          현재 단계의 진단 상태는 초기화되며, 이전 학습 기록은 삭제되지
+          않습니다.
         </p>
         <div className="mt-6 space-y-2">
           {lower
@@ -846,18 +886,32 @@ export function WritingSessionClient({ sessionId }: { sessionId: number }) {
   const [structureGuideBusy, setStructureGuideBusy] = useState(false);
   const [error, setError] = useState('');
   const [feedback, setFeedback] = useState<any>(null);
-  const load = () =>
-    api<{ session: any }>(undefined, `session&sessionId=${sessionId}`)
+  const applyingPromotion = useRef(false);
+  const revealingHints = useRef(new Set<number>());
+  const load = () => {
+    setError('');
+    return api<{ session: any }>(undefined, `session&sessionId=${sessionId}`)
       .then((data) => {
         setSession(data.session);
         if (data.session.status === 'abandoned')
           router.replace('/writing/practice');
       })
       .catch((cause: Error) => setError(cause.message));
+  };
   useEffect(() => {
     load();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const current = session?.currentItem;
+  useEffect(() => {
+    if (busy || (session?.status !== 'generating' && current?.status !== 'submitted')) return;
+    let pending = false;
+    const timer = window.setInterval(() => {
+      if (pending) return;
+      pending = true;
+      void load().finally(() => {pending=false;});
+    },2000);
+    return () => window.clearInterval(timer);
+  },[busy,session?.status,current?.status]);
   const isLearning = session?.type === 'learning';
   const structureLabels =
     current?.taskType === 'task1' || current?.taskType === 'task2'
@@ -865,7 +919,9 @@ export function WritingSessionClient({ sessionId }: { sessionId: number }) {
       : [];
   const structureGuideAvailable = isLearning && structureLabels.length > 0;
   const structureGuideUsed = Boolean(current?.structureGuideUsed);
-  const foundationQuestions = Array.isArray(current?.question?.material?.questions)
+  const foundationQuestions = Array.isArray(
+    current?.question?.material?.questions,
+  )
     ? current.question.material.questions
         .map((question: any) =>
           typeof question?.prompt === 'string' ? question.prompt.trim() : '',
@@ -875,6 +931,12 @@ export function WritingSessionClient({ sessionId }: { sessionId: number }) {
     : [];
   const isFoundationDrill =
     current?.taskType === 'foundation' && foundationQuestions.length === 3;
+  const foundationSections = isFoundationDrill
+    ? foundationQuestions.map((_: string, index: number) => ({
+        label: `Question ${index + 1}`,
+        text: (foundationAnswers[index] ?? '').trim(),
+      }))
+    : [];
   const submittedAnswer = structureGuideUsed
     ? answerSections
         .map((section) => section.text.trim())
@@ -888,8 +950,16 @@ export function WritingSessionClient({ sessionId }: { sessionId: number }) {
           )
           .join('\n\n')
       : answer;
+  const countedAnswer = isFoundationDrill
+    ? foundationSections
+        .map((section: { text: string }) => section.text)
+        .filter(Boolean)
+        .join('\n\n')
+    : submittedAnswer;
   const hasRequiredAnswer = isFoundationDrill
-    ? foundationAnswers.length === 3 && foundationAnswers.every((value) => value.trim())
+    ? foundationSections.every((section: { text: string }) =>
+        Boolean(section.text),
+      )
     : Boolean(submittedAnswer.trim());
   useEffect(() => {
     if (!current) return;
@@ -908,33 +978,31 @@ export function WritingSessionClient({ sessionId }: { sessionId: number }) {
         : [],
     );
   }, [current?.id, current?.structureGuideUsed]); // eslint-disable-line react-hooks/exhaustive-deps
-  const reveal = (hintId: number) => {
-    if (
-      !current ||
-      session.hints?.find((hint: any) => hint.id === hintId)?.revealed
-    )
-      return;
-    setSession((previous: any) => ({
-      ...previous,
-      hints: previous.hints.map((hint: any) =>
-        hint.id === hintId ? { ...hint, revealed: true } : hint,
-      ),
-    }));
-    void api<{ content: string }>({
+  const reveal = async (hintId: number) => {
+    if (!current || revealingHints.current.has(hintId)) return false;
+    if (session.hints?.find((hint: any) => hint.id === hintId)?.revealed) return true;
+    revealingHints.current.add(hintId);
+    setError('');
+    try {
+    const result = await api<{ content: string }>({
       action: 'reveal-hint',
       sessionId,
       itemId: current.id,
       hintId,
-    }).catch((cause) =>
+    });
+    setSession((previous: any) => ({...previous,hints:previous.hints.map((hint: any)=>hint.id===hintId?{...hint,revealed:true,content:result.content}:hint)}));
+    return true;
+    } catch(cause) {
       setError(
         cause instanceof Error
           ? cause.message
           : '힌트 사용 기록을 저장하지 못했습니다.',
-      ),
-    );
+      );
+      return false;
+    } finally { revealingHints.current.delete(hintId); }
   };
   const submit = async () => {
-    if (!hasRequiredAnswer) return;
+    if (!hasRequiredAnswer || !current || busy || structureGuideBusy) return;
     setBusy(true);
     setError('');
     try {
@@ -943,7 +1011,11 @@ export function WritingSessionClient({ sessionId }: { sessionId: number }) {
         sessionId,
         itemId: current.id,
         answer: submittedAnswer,
-        answerSections: structureGuideUsed ? answerSections : [],
+        answerSections: isFoundationDrill
+          ? foundationSections
+          : structureGuideUsed
+            ? answerSections
+            : [],
       });
       setSession(result.session);
       setFeedback(result.result);
@@ -1024,13 +1096,69 @@ export function WritingSessionClient({ sessionId }: { sessionId: number }) {
     setFeedback(null);
     load();
   };
+  const applyPromotion = async () => {
+    if (applyingPromotion.current) return;
+    applyingPromotion.current = true;
+    setBusy(true);
+    setError('');
+    try {
+      await api({ action: 'apply-promotion', sessionId });
+      router.replace('/writing');
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : '승급을 적용하지 못했습니다.',
+      );
+    } finally {
+      applyingPromotion.current = false;
+      setBusy(false);
+    }
+  };
+  if (!session && error)
+    return <InitialLoadError message={error} retry={load} />;
   if (!session)
     return (
       <section className="mt-7 grid min-h-64 place-items-center rounded-3xl border border-dashed border-[#d7cfc2]">
         <Loader2 className="size-5 animate-spin text-[#d76a47]" />
       </section>
     );
-  if (session.completed)
+  if (session.status === 'generating' || current?.status === 'submitted') return (
+    <section className="mt-7 rounded-3xl border border-[#ded7ca] bg-[#fffdf8] p-7 text-center" role="status">
+      <Loader2 className="mx-auto size-6 animate-spin text-[#d76a47]" />
+      <p className="mt-4">{session.status==='generating'?'문제를 준비하고 있어요.':'답안을 채점하고 있어요.'}</p>
+      <p className="mt-2 text-sm text-[#69736e]">완료되면 자동으로 이어집니다.</p>
+      {error && <p role="alert" className="mt-3 text-sm text-[#c34f32]">{error}</p>}
+      <Button variant="outline" className="mt-5" disabled={busy} onClick={abandon}>세션 포기</Button>
+    </section>
+  );
+  if (feedback && isLearning)
+    return (
+      <section className="mt-7 max-w-3xl rounded-3xl border border-[#dcd6ca] bg-[#fffdf8] p-6 shadow-[0_18px_48px_rgba(35,44,43,0.05)] sm:p-8">
+        <p className="text-xs font-bold tracking-[.14em] text-[#d76a47]">
+          LEARNING FEEDBACK
+        </p>
+        <h2 className="mt-2 font-serif text-3xl">이번 답안을 살펴볼까요?</h2>
+        <Performance score={feedback.effectiveScore} />
+        <Feedback data={feedback.feedback} />
+        <Button
+          className="mt-7"
+          onClick={session.completed ? () => router.replace('/writing') : next}
+        >
+          {session.completed ? 'Board로 돌아가기' : '다음 문제'}{' '}
+          <ArrowRight className="size-4" />
+        </Button>
+      </section>
+    );
+  if (session.completed) {
+    const results = Array.isArray(session.results) ? session.results : [];
+    const averageScore = session.averageScore ?? session.promotionScore;
+    const resultTitle =
+      session.type === 'placement_test'
+        ? '시작 레벨 진단'
+        : session.type === 'test'
+          ? '일반 테스트'
+          : session.type === 'learning'
+            ? '학습'
+            : '승급 테스트';
     return (
       <section className="mt-7 max-w-3xl rounded-3xl border border-[#dcd6ca] bg-[#fffdf8] p-7 text-center shadow-[0_18px_48px_rgba(35,44,43,0.05)]">
         <Check className="mx-auto size-9 text-[#38634f]" />
@@ -1038,9 +1166,14 @@ export function WritingSessionClient({ sessionId }: { sessionId: number }) {
           COMPLETED
         </p>
         <h2 className="mt-2 font-serif text-3xl">세션을 완료했습니다.</h2>
+        {typeof averageScore === 'number' && (
+          <Performance
+            score={averageScore}
+            title={`${resultTitle} 전체 결과`}
+          />
+        )}
         {session.type === 'promotion_test' && (
           <p className="mt-3 text-sm text-[#69736e]">
-            승급 테스트 평균 {Math.round(session.promotionScore ?? 0)}점 ·{' '}
             {session.promotionRecommendation === 'ready'
               ? '목표 레벨에 도전할 준비가 되었습니다.'
               : '현재 단계에서 조금 더 학습하는 것을 권장합니다.'}
@@ -1048,16 +1181,43 @@ export function WritingSessionClient({ sessionId }: { sessionId: number }) {
         )}
         {session.type === 'promotion_test' &&
           session.promotionRecommendation === 'ready' && (
-            <Button
-              className="mt-6"
-              onClick={async () => {
-                await api({ action: 'apply-promotion', sessionId });
-                router.replace('/writing');
-              }}
-            >
-              승급 적용하기
+            <Button className="mt-6" disabled={busy} onClick={applyPromotion}>
+              {busy && <Loader2 className="size-4 animate-spin" />}
+              {busy ? '승급 적용 중' : '승급 적용하기'}
             </Button>
           )}
+        {error && (
+          <p role="alert" className="mt-4 text-sm text-[#c34f32]">
+            {error}
+          </p>
+        )}
+        {results.length > 0 && (
+          <div className="mt-6 space-y-5 text-left">
+            {results.map((result: any) => (
+              <article
+                key={result.itemId}
+                className="rounded-2xl border border-[#ded7ca] bg-[#fbf9f4] p-5"
+              >
+                <p className="text-xs font-bold tracking-[.12em] text-[#d76a47]">
+                  QUESTION {result.order} ·{' '}
+                  {result.taskType === 'task1'
+                    ? 'Task 1'
+                    : result.taskType === 'task2'
+                      ? 'Task 2'
+                      : 'FOUNDATION'}
+                </p>
+                <Performance score={result.effectiveScore} />
+                <p className="mt-4 text-xs font-bold text-[#69736e]">
+                  MY ANSWER
+                </p>
+                <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#344149]">
+                  {result.answerText}
+                </p>
+                <Feedback data={result.feedback} />
+              </article>
+            ))}
+          </div>
+        )}
         <a
           href="/writing"
           className="mt-6 inline-flex items-center gap-2 text-sm font-bold text-[#d76a47]"
@@ -1066,26 +1226,7 @@ export function WritingSessionClient({ sessionId }: { sessionId: number }) {
         </a>
       </section>
     );
-  if (feedback && isLearning)
-    return (
-      <section className="mt-7 max-w-3xl rounded-3xl border border-[#dcd6ca] bg-[#fffdf8] p-6 shadow-[0_18px_48px_rgba(35,44,43,0.05)] sm:p-8">
-        <p className="text-xs font-bold tracking-[.14em] text-[#d76a47]">
-          LEARNING FEEDBACK
-        </p>
-        <h2 className="mt-2 font-serif text-3xl">
-          {feedback.label === 'pass'
-            ? '잘했어요.'
-            : '이번 답안을 정리해 볼게요.'}
-        </h2>
-        <p className="mt-4 rounded-2xl bg-[#eef5f0] p-4 text-sm font-semibold text-[#38634f]">
-          최종 내부 점수 {Math.round(feedback.effectiveScore)}점
-        </p>
-        <Feedback data={feedback.feedback} />
-        <Button className="mt-7" onClick={next}>
-          다음 문제 <ArrowRight className="size-4" />
-        </Button>
-      </section>
-    );
+  }
   if (!current) return null;
   const material = current.question.material;
   return (
@@ -1114,8 +1255,9 @@ export function WritingSessionClient({ sessionId }: { sessionId: number }) {
           포기하기
         </button>
       </div>
-      {material && Object.keys(material).length > 0 && (
-        current.taskType === 'foundation' ? (
+      {material &&
+        Object.keys(material).length > 0 &&
+        (current.taskType === 'foundation' ? (
           <section className="mt-5 rounded-3xl border border-[#dcd6ca] bg-[#f7faf7] p-6 shadow-[0_12px_32px_rgba(35,44,43,0.04)] sm:p-7">
             <p className="text-[11px] font-bold tracking-[.16em] text-[#38634f]">
               SHORT SOURCE MATERIAL
@@ -1138,8 +1280,7 @@ export function WritingSessionClient({ sessionId }: { sessionId: number }) {
             format={current.question.questionFormat}
             material={material}
           />
-        )
-      )}
+        ))}
       <section className="mt-5 rounded-3xl border border-[#dcd6ca] bg-[#fffdf8] p-6 shadow-[0_12px_32px_rgba(35,44,43,0.04)] sm:p-7">
         <div className="flex items-start gap-4 border-b border-[#ece5da] pb-5">
           <span className="font-serif text-5xl leading-none text-[#d76a47]">
@@ -1216,7 +1357,7 @@ export function WritingSessionClient({ sessionId }: { sessionId: number }) {
                         Array.from({ length: 3 }, (_, answerIndex) =>
                           answerIndex === index
                             ? event.target.value
-                            : previous[answerIndex] ?? '',
+                            : (previous[answerIndex] ?? ''),
                         ),
                       )
                     }
@@ -1229,7 +1370,8 @@ export function WritingSessionClient({ sessionId }: { sessionId: number }) {
           ) : structureGuideUsed ? (
             <div className="mt-3 space-y-4">
               <div className="rounded-xl border border-[#f0cbbb] bg-[#fff8f4] px-4 py-3 text-sm leading-6 text-[#8a4a37]">
-                문단 구조 가이드를 사용 중입니다. 문단별 역할을 확인하며 작성해 보세요.
+                문단 구조 가이드를 사용 중입니다. 문단별 역할을 확인하며 작성해
+                보세요.
               </div>
               {answerSections.map((section, index) => (
                 <label key={section.label} className="block">
@@ -1265,10 +1407,10 @@ export function WritingSessionClient({ sessionId }: { sessionId: number }) {
         </div>
         <div className="mt-3 flex items-center justify-between text-sm text-[#7b827e]">
           <span>
-            {submittedAnswer.trim()
-              ? submittedAnswer.trim().split(/\s+/).length
+            {countedAnswer.trim()
+              ? countedAnswer.trim().split(/\s+/).length
               : 0}{' '}
-            words · {[...submittedAnswer].length} chars
+            words · {[...countedAnswer].length} chars
           </span>
           {current.targetWordCount && (
             <span>권장 {current.targetWordCount}+ words</span>
@@ -1294,10 +1436,125 @@ export function WritingSessionClient({ sessionId }: { sessionId: number }) {
   );
 }
 
+function Performance({
+  score,
+  title = '학습 결과',
+}: {
+  score: unknown;
+  title?: string;
+}) {
+  const valid = typeof score === 'number' && Number.isFinite(score);
+  const label = !valid
+    ? '평가 정보가 없어요'
+    : score >= 78
+      ? '잘했어요'
+      : score >= 60
+        ? '조금 더 다듬어요'
+        : '보완이 필요해요';
+  const color =
+    valid && score >= 78
+      ? 'bg-[#eef5f0] text-[#38634f]'
+      : valid && score >= 60
+        ? 'bg-[#fff4e3] text-[#795b25]'
+        : 'bg-[#fff0e9] text-[#a64b32]';
+  return (
+    <div
+      className={`relative mt-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl p-4 text-left text-sm ${color}`}
+    >
+      <p>
+        <span className="mr-2">{title}</span>
+        <strong>{label}</strong>
+      </p>
+      <details className="group shrink-0">
+        <summary
+          aria-label="평가 기준 안내"
+          className="grid size-12 cursor-pointer list-none place-items-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 [&::-webkit-details-marker]:hidden"
+        >
+          <CircleHelp className="size-5" />
+        </summary>
+        <p
+          role="note"
+          className="absolute inset-x-0 top-full z-30 mt-2 rounded-2xl border border-[#dcd6ca] bg-[#fffdf8] p-4 font-normal leading-6 text-[#344149] shadow-lg"
+        >
+          이 결과는 답안을 평가한 학습 단계의 기준으로 측정했어요. 과제 수행,
+          구성·연결, 어휘, 문법을 함께 살펴보고, 사용한 힌트도 반영해요. 승급
+          테스트는 도전한 목표 단계가 기준이에요. 공식 IELTS Band나 다른
+          학습자와의 순위는 아니에요.
+        </p>
+      </details>
+    </div>
+  );
+}
+
+function VocabularyFeedback({
+  synonyms,
+  expressions,
+}: {
+  synonyms: unknown;
+  expressions: unknown;
+}) {
+  const strings = (value: unknown): string[] =>
+    Array.isArray(value)
+      ? value
+          .filter(
+            (item): item is string =>
+              typeof item === 'string' && Boolean(item.trim()),
+          )
+          .map((item) => item.trim())
+      : [];
+  const alternatives: string[] = [],
+    meanings: string[] = [];
+  for (const item of strings(synonyms)) {
+    const pair = item.split(/\s*(?:=|→|->)\s*/);
+    // Legacy grading sometimes puts Korean glosses in synonyms; keep them without mislabelling them.
+    if (pair.length > 1 && /^[^A-Za-z]*[가-힣]/.test(pair[1]))
+      meanings.push(item);
+    else alternatives.push(item);
+  }
+  return (
+    <>
+      {[
+        {
+          title: '유의어·대체어',
+          description: '비슷한 의미로 바꿔 쓸 수 있는 영어 어휘예요.',
+          items: alternatives,
+        },
+        {
+          title: '어휘·구문 뜻',
+          description: '답안에 쓰인 단어와 구문의 뜻을 살펴보세요.',
+          items: meanings,
+        },
+        {
+          title: '활용 표현·예문',
+          description: '비교나 설명에 활용할 수 있는 구문과 예문이에요.',
+          items: strings(expressions),
+        },
+      ]
+        .filter((group) => group.items.length)
+        .map((group) => (
+          <section key={group.title}>
+            <h3 className="font-bold text-[#24333a]">{group.title}</h3>
+            <p className="mt-1 text-[#69736e]">{group.description}</p>
+            <ul className="mt-3 space-y-2">
+              {group.items.map((item, index) => (
+                <li
+                  key={index}
+                  className="whitespace-pre-wrap break-words rounded-xl border border-[#ece5da] bg-[#fffdf8] px-4 py-3 text-[#344149]"
+                >
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
+    </>
+  );
+}
+
 function Feedback({ data }: { data: any }) {
   if (!data || typeof data !== 'object') return null;
   if (Array.isArray(data.keyLearningPoints))
-    return <ReviewedFeedback data={data} />;
+    return <StructuredFeedback data={data} />;
   return (
     <div className="mt-6 space-y-5 text-sm leading-6">
       <Section title="최소 교정 답안" value={data.correctedAnswer} />
@@ -1314,12 +1571,9 @@ function Feedback({ data }: { data: any }) {
             : null
         }
       />
-      <Section
-        title="유의어 · 표현"
-        value={[
-          ...(data.synonyms ?? []),
-          ...(data.usefulExpressions ?? []),
-        ].join(' · ')}
+      <VocabularyFeedback
+        synonyms={data.synonyms}
+        expressions={data.usefulExpressions}
       />
       <Section title="개선 답안" value={data.improvedAnswer} />
       <Section title="이번에 기억할 핵심" value={data.keyLearning} />
@@ -1327,7 +1581,7 @@ function Feedback({ data }: { data: any }) {
   );
 }
 
-function ReviewedFeedback({ data }: { data: any }) {
+function StructuredFeedback({ data }: { data: any }) {
   const errors = Array.isArray(data.errors) ? data.errors : [];
   const synonymGroups = Array.isArray(data.synonymGroups)
     ? data.synonymGroups
@@ -1337,16 +1591,20 @@ function ReviewedFeedback({ data }: { data: any }) {
     : [];
   const improvedAnswer = Array.isArray(data.improvedAnswer)
     ? data.improvedAnswer
-    : [];
+    : typeof data.improvedAnswer === 'string'
+      ? data.improvedAnswer
+          .split(/\n\s*\n/)
+          .filter((part: string) => part.trim())
+          .map((part: string, index: number) => ({
+            label: `문단 ${index + 1}`,
+            text: part.trim(),
+          }))
+      : [];
   const keyLearningPoints = Array.isArray(data.keyLearningPoints)
     ? data.keyLearningPoints
     : [];
   return (
     <div className="mt-6 space-y-7 text-sm leading-6">
-      <div className="flex items-center gap-2 text-[11px] font-bold tracking-[.14em] text-[#38634f]">
-        <Sparkles className="size-3.5" />
-        AI REVIEWED FEEDBACK
-      </div>
       <Section title="최소 교정 답안" value={data.correctedAnswer} />
       {errors.length > 0 && (
         <section>
@@ -1371,7 +1629,7 @@ function ReviewedFeedback({ data }: { data: any }) {
       )}
       {synonymGroups.length > 0 && (
         <section>
-          <h3 className="font-bold text-[#24333a]">유의어 · 대체 표현</h3>
+          <h3 className="font-bold text-[#24333a]">유의어·대체어</h3>
           <div className="mt-3 space-y-3">
             {synonymGroups.map((group: any, index: number) => (
               <article
@@ -1392,7 +1650,7 @@ function ReviewedFeedback({ data }: { data: any }) {
       )}
       {usefulExpressions.length > 0 && (
         <section>
-          <h3 className="font-bold text-[#24333a]">IELTS에 유용한 표현</h3>
+          <h3 className="font-bold text-[#24333a]">활용 표현·예문</h3>
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             {usefulExpressions.map((item: any, index: number) => (
               <article
@@ -1435,7 +1693,10 @@ function ReviewedFeedback({ data }: { data: any }) {
           <h3 className="font-bold text-[#24333a]">이번에 기억할 핵심</h3>
           <ul className="mt-3 space-y-2">
             {keyLearningPoints.map((point: string, index: number) => (
-              <li key={`${point}-${index}`} className="flex gap-2 text-[#69736e]">
+              <li
+                key={`${point}-${index}`}
+                className="flex gap-2 text-[#69736e]"
+              >
                 <Check className="mt-1 size-4 shrink-0 text-[#38634f]" />
                 <span>{point}</span>
               </li>
@@ -1461,34 +1722,12 @@ export function WritingNotebookClient() {
   const [entries, setEntries] = useState<any[] | null>(null);
   const [opened, setOpened] = useState<number | null>(null);
   const [materialOpened, setMaterialOpened] = useState<number | null>(null);
-  const [reviewing, setReviewing] = useState(false);
-  const [reviewMessage, setReviewMessage] = useState('');
   const [error, setError] = useState('');
   useEffect(() => {
     api<{ entries: any[] }>(undefined, 'notebook')
       .then((notebook) => setEntries(notebook.entries))
       .catch((cause: Error) => setError(cause.message));
   }, []);
-  const reviewNotebook = async () => {
-    setReviewing(true);
-    setReviewMessage('');
-    try {
-      const result = await api<{ reviewedCount: number; failedCount: number }>({
-        action: 'review-notebook',
-      });
-      const notebook = await api<{ entries: any[] }>(undefined, 'notebook');
-      setEntries(notebook.entries);
-      setReviewMessage(
-        result.reviewedCount
-          ? `${result.reviewedCount}개의 오답노트를 읽기 좋게 정리했어요.`
-          : '검수할 새 오답노트가 없습니다.',
-      );
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '검수에 실패했습니다.');
-    } finally {
-      setReviewing(false);
-    }
-  };
   if (error)
     return (
       <section className="mt-7 rounded-3xl border border-[#efd2c7] bg-[#fff8f4] p-6 text-sm text-[#a64b32]">
@@ -1512,35 +1751,8 @@ export function WritingNotebookClient() {
         </p>
       </section>
     );
-  const pendingReviewCount = entries.filter((entry) => !entry.reviewed).length;
   return (
-    <>
-      <AiProgressOverlay
-        active={reviewing}
-        label="AI가 오답노트를 읽기 좋게 정리하고 있어요."
-      />
-      <section className="mt-7 space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#dce8e0] bg-[#f7fbf8] px-4 py-3">
-        <div>
-          <p className="text-xs font-bold tracking-[.12em] text-[#38634f]">
-            AI NOTE REVIEW
-          </p>
-          <p className="mt-1 text-sm text-[#69736e]">
-            기존 점수와 채점 원본은 유지하고, 읽기 쉬운 피드백으로 정리합니다.
-          </p>
-        </div>
-        <Button
-          onClick={reviewNotebook}
-          disabled={reviewing || pendingReviewCount === 0}
-          className="h-10 px-4"
-        >
-          {reviewing ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-          {pendingReviewCount ? 'AI 검수로 다듬기' : '검수 완료'}
-        </Button>
-      </div>
-      {reviewMessage && (
-        <p className="px-1 text-sm font-medium text-[#38634f]">{reviewMessage}</p>
-      )}
+    <section className="mt-7 space-y-3">
       {entries.map((entry) => (
         <article
           key={entry.id}
@@ -1563,14 +1775,12 @@ export function WritingNotebookClient() {
               <span className="mt-2 block font-serif text-xl text-[#24333a]">
                 {entry.title}
               </span>
-              <span className="mt-2 block text-sm text-[#69736e]">
-                내 점수 {Math.round(entry.score)}점 · {entry.label}
-              </span>
             </span>
             <ChevronRight
               className={`mt-2 size-4 shrink-0 text-[#69736e] transition-transform ${opened === entry.id ? 'rotate-90' : ''}`}
             />
           </button>
+          <Performance score={entry.score} />
           {opened === entry.id && (
             <div className="mt-5 border-t border-[#ece5da] pt-5">
               {entry.material && Object.keys(entry.material).length > 0 && (
@@ -1610,7 +1820,6 @@ export function WritingNotebookClient() {
           )}
         </article>
       ))}
-      </section>
-    </>
+    </section>
   );
 }

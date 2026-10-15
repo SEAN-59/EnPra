@@ -12,20 +12,25 @@ type ConnectionResponse = { connection?: Connection | null; error?: string };
 
 export function AIConnectionStatus({ variant = 'drawer' }: { variant?: 'drawer' | 'dashboard' }) {
   const [connection, setConnection] = useState<Connection | null | undefined>(undefined);
+  const [error, setError] = useState(false);
+  const [retry, setRetry] = useState(0);
 
   useEffect(() => {
     let alive = true;
+    setError(false);
+    setConnection(undefined);
     void fetch('/api/ai-connection', { cache: 'no-store' })
       .then(async (response) => ({ response, body: await response.json() as ConnectionResponse }))
-      .then(({ response, body }) => { if (alive && response.ok) setConnection(body.connection ?? null); })
-      .catch(() => { if (alive) setConnection(null); });
+      .then(({ response, body }) => { if (!response.ok) throw new Error(); if (alive) setConnection(body.connection ?? null); })
+      .catch(() => { if (alive) { setConnection(null); setError(true); } });
     return () => { alive = false; };
-  }, []);
+  }, [retry]);
 
   const isLoading = connection === undefined;
   const isConnected = connection?.status === 'active';
   const isPending = connection?.status === 'pending';
-  const statusText = isLoading ? '상태 확인 중' : isConnected ? '연결됨' : isPending ? '로그인 확인 중' : '연결 필요';
+  const statusText = error ? '상태 확인 실패' : isLoading ? '상태 확인 중' : isConnected ? '연결됨' : isPending ? '로그인 확인 중' : '연결 필요';
+  const retryButton = error ? <button type="button" onClick={() => setRetry(current => current + 1)} className="mt-3 text-xs font-semibold underline">다시 확인</button> : null;
 
   if (variant === 'dashboard') {
     return (
@@ -33,6 +38,7 @@ export function AIConnectionStatus({ variant = 'drawer' }: { variant?: 'drawer' 
         <p className="text-xs font-semibold tracking-wide text-[#8b918b]">AI CONNECTION</p>
         <p className="mt-4 flex items-center gap-2 font-semibold"><span className={`size-2 rounded-full ${isConnected ? 'bg-[#4ca773]' : isPending ? 'bg-[#d99c45]' : 'bg-[#a8ada9]'}`} />{statusText}</p>
         <a href="/connect" className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-[#38634f] hover:text-[#264c3a]">{isConnected ? '연결 관리' : 'ChatGPT 연결하기'} <ChevronRight className="size-3.5" aria-hidden="true" /></a>
+        {retryButton}
       </article>
     );
   }
@@ -50,6 +56,7 @@ export function AIConnectionStatus({ variant = 'drawer' }: { variant?: 'drawer' 
         </span>
         <span className="mt-4 block text-xs leading-relaxed text-[#7a817c]">{isConnected ? '내 ChatGPT 계정 연결을 관리합니다.' : '연결하면 내 ChatGPT 계정으로 AI 피드백을 사용할 수 있습니다.'}</span>
       </a>
+      {retryButton}
     </section>
   );
 }

@@ -1,7 +1,10 @@
 import type { Context, Hono } from 'hono';
 import type { Pool, PoolClient } from 'pg';
+import { HTTPException } from 'hono/http-exception';
+import { randomUUID } from 'node:crypto';
 
 import type { CodexRegistry } from './codex.js';
+import { AiResponseError, parseAiJsonObject } from './ai-json.js';
 
 type UserContext = { id: string; displayName: string };
 type Variables = { user: UserContext };
@@ -17,6 +20,37 @@ type FocusSkill = {
 
 const WRITING_RULE_VERSION = 'v3';
 const FEEDBACK_REVIEW_VERSION = 'v1';
+
+const closedJsonObject = (properties: Record<string, unknown>) => ({
+  type: 'object', properties, required: Object.keys(properties), additionalProperties: false,
+});
+const jsonString = { type: 'string' };
+const jsonScore = { type: 'number', minimum: 0, maximum: 100 };
+const gradingOutputSchema = closedJsonObject({
+  rawScore: jsonScore,
+  resultLabel: { type: 'string', enum: ['pass', 'partial', 'needs_practice'] },
+  errorCount: { type: 'integer', minimum: 0, maximum: 32767 },
+  criteria: closedJsonObject({
+    taskAchievementOrResponse: jsonScore,
+    taskAchievementOrResponseEvidence: jsonString,
+    coherenceCohesion: jsonScore,
+    coherenceCohesionEvidence: jsonString,
+    lexicalResource: jsonScore,
+    lexicalResourceEvidence: jsonString,
+    grammaticalRangeAccuracy: jsonScore,
+    grammaticalRangeAccuracyEvidence: jsonString,
+  }),
+  feedback: closedJsonObject({
+    correctedAnswer: { type: 'string', minLength: 1 },
+    errors: { type: 'array', items: closedJsonObject({ original: { type: 'string', minLength: 1 }, correction: jsonString, reason: jsonString, occurrence: { type: 'integer', minimum: 1 } }) },
+    synonymGroups: { type: 'array', maxItems: 4, items: closedJsonObject({ term: {type:'string',minLength:1}, alternatives: {type:'array',minItems:1,maxItems:4,items:{type:'string',minLength:1}}, note: jsonString }) },
+    usefulExpressions: { type: 'array', maxItems: 4, items: closedJsonObject({ expression: {type:'string',minLength:1}, meaning: {type:'string',minLength:1}, example: {type:'string',minLength:1} }) },
+    improvedAnswer: { type: 'string', minLength: 1 },
+    keyLearningPoints: { type: 'array', minItems: 1, maxItems: 3, items: {type:'string',minLength:1} },
+    nextFocus: jsonString,
+  }),
+  skills: { type: 'array', items: closedJsonObject({ code: jsonString, qualityScore: jsonScore, evidenceSummary: jsonString }) },
+});
 
 const levelOrder: PublicLevel[] = [
   'foundation',
@@ -377,6 +411,11 @@ function targetWordCountFor(stage: string, task: TaskType) {
   return Math.max(0, number(counts?.[task], 0)) || null;
 }
 
+export function writingQuestionPrompt(prompt: string, targetWords?: number | null) {
+  const question = prompt.replace(/\b(?:you\s+should\s+)?write\s+(?:(?:at\s+least|a\s+minimum\s+of)\s+)?\d+\s+words\.?/gi, '').trim();
+  return targetWords && targetWords > 0 ? `${question}\n\nWrite at least ${targetWords} words.` : question;
+}
+
 function expectationFor(stage: string, task: TaskType) {
   const expectation = configForStage(stage).expectation as
     | { label?: unknown; task1?: unknown; task2?: unknown }
@@ -417,18 +456,164 @@ function levelLabel(level: string, group?: string | null) {
 }
 
 function jsonObject(value: string): Record<string, unknown> {
-  const cleaned = value
-    .trim()
-    .replace(/^```(?:json)?\s*/i, '')
-    .replace(/\s*```$/, '');
-  const start = cleaned.indexOf('{');
-  const end = cleaned.lastIndexOf('}');
-  if (start < 0 || end <= start)
-    throw new Error('AI 응답에서 JSON을 찾지 못했습니다.');
-  const parsed: unknown = JSON.parse(cleaned.slice(start, end + 1));
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
-    throw new Error('AI 응답 형식이 올바르지 않습니다.');
-  return parsed as Record<string, unknown>;
+  return parseAiJsonObject(value);
+}
+
+function validRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function hasFoundationMaterial(material: unknown) {
+  return validRecord(material) && Boolean(text(material.content)) &&
+    asArray(material.questions).length === 3 &&
+    asArray(material.questions).every((question) => validRecord(question) && Boolean(text(question.prompt)));
+}
+
+function usableBankQuestion(question: Record<string, unknown> | undefined) {
+  if (!question) return false;
+  if (question.task_type === 'foundation') return hasFoundationMaterial(question.material_json);
+  try {
+    validateGeneratedQuestion({title:question.title,prompt:question.prompt,material:question.material_json,solutionContext:question.solution_context},question.task_type as TaskType,String(question.question_format));
+    return true;
+  } catch { return false; }
+}
+
+function legacyFoundationSections(answer: string, material: unknown) {
+  if (!hasFoundationMaterial(material)) return [];
+  const questions = asArray((material as Record<string, unknown>).questions);
+  const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = questions.map((question, index) =>
+    `Question ${index + 1}: ${escape(text((question as Record<string, unknown>).prompt))}\\r?\\nAnswer ${index + 1}:[ \\t]*([\\s\\S]*?)`,
+  ).join('\\r?\\n\\r?\\n');
+  const matched = new RegExp(`^${pattern}$`).exec(answer);
+  if (!matched || matched.slice(1).some((value) => /^(?:Question|Answer) \d+:/m.test(value))) return [];
+  return matched.slice(1).map((value, index) => ({ label: `Question ${index + 1}`, text: value.trim() }));
+}
+
+function validateGeneratedQuestion(generated: Record<string, unknown>, task: TaskType, format: string) {
+  if (!text(generated.title, 300) || !text(generated.prompt, 12000) ||
+      !validRecord(generated.material) || !validRecord(generated.solutionContext))
+    throw new AiResponseError('AI가 필수 문제 정보를 완성하지 못했습니다. 다시 시도해 주세요.');
+  const material = generated.material;
+  let usable = true;
+  if (task === 'foundation') {
+    usable = material.type === format && Boolean(text(material.content)) &&
+      asArray(material.questions).length === 3 &&
+      asArray(material.questions).every((q) => validRecord(q) && Boolean(text(q.prompt))) &&
+      asArray(generated.solutionContext.expectedAnswers).length === 3 &&
+      asArray(generated.solutionContext.expectedAnswers).every((answer) => Boolean(text(answer)));
+  } else if (task === 'task1') {
+    if (format === 'bar_chart' || format === 'line_chart') {
+      const categories = asArray(material.categories);
+      const series = asArray(material.series);
+      usable = categories.length > 0 && categories.every((v) => Boolean(text(v))) &&
+        series.length > 0 && series.every((v) => validRecord(v) && Boolean(text(v.name)) &&
+          asArray(v.data).length === categories.length && asArray(v.data).every((n) => typeof n === 'number' && Number.isFinite(n)));
+    } else if (format === 'map') {
+      const coordinate = (value: unknown) => typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 100;
+      const lineTypes = ['road', 'river', 'path', 'bridge', 'arrow'];
+      usable = asArray(material.mapPanels).length > 0 && asArray(material.mapPanels).every((panel) =>
+        validRecord(panel) && Boolean(text(panel.label)) && asArray(panel.features).length > 0 &&
+        asArray(panel.features).every((feature) => {
+          if (!validRecord(feature) || !Boolean(text(feature.label))) return false;
+          if (lineTypes.includes(String(feature.type))) return Array.isArray(feature.points) && feature.points.length >= 2 && feature.points.every(point =>
+            Array.isArray(point) && point.length === 2 && point.every(coordinate));
+          return ['area', 'building', 'label'].includes(String(feature.type)) && coordinate(feature.x) && coordinate(feature.y) &&
+            ['width', 'height'].every(key => feature[key] === undefined || (coordinate(feature[key]) && Number(feature[key]) > 0)) &&
+            (feature.type==='label' || (Number(feature.x)+Number(feature.width??18)<=100 && Number(feature.y)+Number(feature.height??12)<=100));
+        }));
+    } else if (format === 'diagram') {
+      usable = asArray(material.steps).length > 0 && asArray(material.steps).every((step) =>
+        validRecord(step) && Boolean(text(step.label)) && Boolean(text(step.description)));
+    } else {
+      usable = asArray(material.rows).length > 0 && asArray(material.rows).every((row) =>
+        validRecord(row) && Boolean(text(row.label)) && typeof row.value === 'number' && Number.isFinite(row.value));
+    }
+  }
+  if (!usable) throw new AiResponseError('AI가 사용할 수 있는 문제 자료를 만들지 못했습니다. 다시 시도해 주세요.');
+}
+
+function validatedHints(generated: Record<string, unknown>) {
+  const rows = asArray(generated.hints);
+  const types = ['structure', 'grammar', 'vocabulary', 'sample'];
+  if (rows.length !== 4 || !rows.every((row) => validRecord(row) && types.includes(text(row.type, 40)) && Boolean(text(row.content, 3000))) ||
+      new Set(rows.map((row) => text((row as Record<string, unknown>).type, 40))).size !== 4)
+    throw new AiResponseError('AI가 네 종류의 힌트를 완성하지 못했습니다. 다시 시도해 주세요.');
+  return rows as Array<Record<string, unknown>>;
+}
+
+function validateEvaluation(value: Record<string, unknown>) {
+  const keys = ['taskAchievementOrResponse', 'coherenceCohesion', 'lexicalResource', 'grammaticalRangeAccuracy'];
+  if (!validRecord(value.criteria) || !keys.every((key) =>
+      typeof (value.criteria as Record<string, unknown>)[key] === 'number' &&
+      Number.isFinite((value.criteria as Record<string, number>)[key]) &&
+      (value.criteria as Record<string, number>)[key] >= 0 && (value.criteria as Record<string, number>)[key] <= 100) ||
+      !validRecord(value.feedback) || !text(value.feedback.correctedAnswer) || !text(value.feedback.improvedAnswer) ||
+      typeof value.errorCount !== 'number' || !Number.isInteger(value.errorCount) || value.errorCount < 0 || value.errorCount > 32767 ||
+      (value.resultLabel !== undefined && !['pass', 'partial', 'needs_practice'].includes(text(value.resultLabel))))
+    throw new AiResponseError('AI가 필수 채점 정보를 완성하지 못했습니다. 다시 시도해 주세요.');
+  const feedback = value.feedback as Record<string, unknown>;
+  // Accept legacy grading fixtures/history; new schema output must carry usable structured feedback.
+  if ('keyLearningPoints' in feedback) {
+    const points = asArray(feedback.keyLearningPoints);
+    const groups = asArray(feedback.synonymGroups);
+    const expressions = asArray(feedback.usefulExpressions);
+    if (!Array.isArray(feedback.keyLearningPoints) || points.length < 1 || points.length > 3 || !points.every(point => typeof point === 'string' && Boolean(text(point))) ||
+        !Array.isArray(feedback.synonymGroups) || groups.length > 4 || !groups.every(group => validRecord(group) && Boolean(text(group.term)) && typeof group.note === 'string' && Array.isArray(group.alternatives) && group.alternatives.length > 0 && group.alternatives.length <= 4 && group.alternatives.every(item => typeof item === 'string' && Boolean(text(item)))) ||
+        !Array.isArray(feedback.usefulExpressions) || expressions.length > 4 || !expressions.every(expression => validRecord(expression) && ['expression','meaning','example'].every(key => typeof expression[key] === 'string' && Boolean(text(expression[key])))))
+      throw new AiResponseError('AI가 읽기 좋은 피드백 항목을 완성하지 못했습니다. 다시 시도해 주세요.');
+  }
+}
+
+function normalizeEvaluationErrors(evaluation: Record<string, unknown>, answer: string) {
+  const feedback = evaluation.feedback as Record<string, unknown>;
+  if (!Array.isArray(feedback.errors)) return;
+  const edits = new Set<string>();
+  let duplicates = 0;
+  const errors = feedback.errors.filter((item) => {
+    if (validRecord(item) && item.occurrence !== undefined && (typeof item.original !== 'string' || !item.original || typeof item.correction !== 'string' || typeof item.reason !== 'string'))
+      throw new AiResponseError('AI가 오류의 원문과 교정 정보를 완성하지 못했습니다. 다시 시도해 주세요.');
+    if (!validRecord(item) || typeof item.original !== 'string' || !item.original || typeof item.correction !== 'string') return true;
+    const positions: number[] = [];
+    for (let from = 0; from <= answer.length;) {
+      const index = answer.indexOf(item.original, from);
+      if (index < 0) break;
+      positions.push(index);
+      from = index + item.original.length;
+    }
+    const located = item.occurrence !== undefined;
+    // Do not publish unverified new quotes, or fail an otherwise usable grade over metadata.
+    if (!positions.length) return !located;
+    const occurrence = positions.length === 1 ? 1 : item.occurrence;
+    if (!Number.isSafeInteger(occurrence) || Number(occurrence) < 1 || positions[Number(occurrence) - 1] === undefined) {
+      delete item.occurrence;
+      return true;
+    }
+    if (located) item.occurrence = occurrence;
+    const start = positions[Number(occurrence) - 1];
+    let prefix = 0, originalEnd = item.original.length, correctionEnd = item.correction.length;
+    while (prefix < originalEnd && prefix < correctionEnd && item.original[prefix] === item.correction[prefix]) prefix++;
+    while (originalEnd > prefix && correctionEnd > prefix && item.original[originalEnd - 1] === item.correction[correctionEnd - 1]) { originalEnd--; correctionEnd--; }
+    const key = JSON.stringify([start + prefix, start + originalEnd, item.correction.slice(prefix, correctionEnd)]);
+    if (edits.has(key)) { duplicates++; return false; }
+    edits.add(key);
+    return true;
+  });
+  const count = Number(evaluation.errorCount);
+  const countFollowedList = count === feedback.errors.length;
+  feedback.errors = errors;
+  // The total can include actual errors omitted from the explanation excerpts.
+  evaluation.errorCount = Math.max(errors.length, count - (countFollowedList ? duplicates : 0));
+}
+
+async function assessmentConfig(pool: Pool, stage: string, version: string) {
+  const result = await pool.query(
+    `SELECT config FROM writing_level_rules WHERE internal_stage=$1 AND rule_version=$2 ORDER BY id DESC LIMIT 1`,
+    [stage, version],
+  );
+  if (validRecord(result.rows[0]?.config)) return result.rows[0].config as Record<string, unknown>;
+  if (version === WRITING_RULE_VERSION) return { ...configForStage(stage), qualityControls: qualityControlsFor(stage) };
+  throw new Error('이 세션이 시작된 당시의 채점 규칙을 찾을 수 없습니다.');
 }
 
 function text(value: unknown, max = 12000) {
@@ -490,9 +675,11 @@ function criterionRows(evaluation: Record<string, unknown>, task: TaskType) {
 
 async function readBody(c: Context) {
   try {
-    return await c.req.json<Record<string, unknown>>();
+    const body: unknown = await c.req.json();
+    if (!validRecord(body)) throw new Error();
+    return body;
   } catch {
-    throw new Error('요청 형식이 올바르지 않습니다.');
+    throw new HTTPException(400, { res: Response.json({error:'요청 형식이 올바르지 않습니다.'},{status:400}) });
   }
 }
 
@@ -583,15 +770,19 @@ function normalizedAnswerSections(value: unknown) {
     .slice(0, 4);
 }
 
-async function queryProfile(pool: Pool, userId: string) {
+async function queryProfile(pool: Pick<Pool,'query'>, userId: string, lock=false) {
   const result = await pool.query(
-    `SELECT * FROM user_writing_profiles WHERE user_id = $1`,
+    `SELECT *,metrics_refreshed_for_date=CURRENT_DATE AS metrics_current FROM user_writing_profiles WHERE user_id = $1${lock?' FOR UPDATE':''}`,
     [userId],
   );
   return result.rows[0] as Record<string, unknown> | undefined;
 }
 
-async function getActiveSession(pool: Pool, userId: string) {
+async function getActiveSession(pool: Pick<Pool,'query'>, userId: string) {
+  await pool.query(
+    `UPDATE writing_sessions SET status='abandoned',abandoned_at=NOW(),updated_at=NOW() WHERE user_id=$1 AND status='generating' AND updated_at<NOW()-INTERVAL '20 minutes'`,
+    [userId],
+  );
   const result = await pool.query(
     `SELECT id, session_type, status FROM writing_sessions WHERE user_id = $1 AND status IN ('generating', 'in_progress') ORDER BY id DESC LIMIT 1`,
     [userId],
@@ -618,13 +809,23 @@ async function ensureHintSet(
     [question.id],
   );
   const skillCodes = skillRows.rows.map((row) => row.skill_code).join(', ');
-  const prompt = `EnPra Writing 학습 문제용 힌트를 만드세요. JSON만 반환하세요.\n현재 내부 단계: ${internalStage}\n이 단계의 기대치: ${expectationFor(internalStage, String(question.task_type) as TaskType)}\n문제: ${question.prompt}\n자료: ${JSON.stringify(question.material_json ?? {})}\n핵심 스킬: ${skillCodes}\n각 단계 수준에 맞추어 아래 4개 힌트를 한국어로 작성하세요. 예시 힌트는 답 전체를 보여주지 말고 시작 문장 또는 짧은 모델만 제시합니다.\n{\"hints\":[{\"type\":\"structure\",\"content\":\"\",\"skillCode\":\"\"},{\"type\":\"grammar\",\"content\":\"\",\"skillCode\":\"\"},{\"type\":\"vocabulary\",\"content\":\"\",\"skillCode\":\"\"},{\"type\":\"sample\",\"content\":\"\",\"skillCode\":\"\"}]}`;
+  const prompt = `EnPra Writing 학습 문제용 힌트를 만드세요. JSON만 반환하세요.\n현재 내부 단계: ${internalStage}\n이 단계의 기대치: ${expectationFor(internalStage, String(question.task_type) as TaskType)}\n문제: ${writingQuestionPrompt(String(question.prompt),targetWordCountFor(internalStage,String(question.task_type) as TaskType))}\n자료: ${JSON.stringify(question.material_json ?? {})}\n핵심 스킬: ${skillCodes}\n각 단계 수준에 맞추어 아래 4개 힌트를 한국어로 작성하세요. 예시 힌트는 답 전체를 보여주지 말고 시작 문장 또는 짧은 모델만 제시합니다.\n{\"hints\":[{\"type\":\"structure\",\"content\":\"\",\"skillCode\":\"\"},{\"type\":\"grammar\",\"content\":\"\",\"skillCode\":\"\"},{\"type\":\"vocabulary\",\"content\":\"\",\"skillCode\":\"\"},{\"type\":\"sample\",\"content\":\"\",\"skillCode\":\"\"}]}`;
   const generated = jsonObject(
     (await codex.get(user.id).runLearningPrompt(prompt)).text,
   );
+  const hints = validatedHints(generated);
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    await client.query(`SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, [`writing-hints:${question.id}:${internalStage}:${WRITING_RULE_VERSION}`]);
+    const ready = await client.query(
+      `SELECT id FROM writing_question_hint_sets WHERE question_id=$1 AND internal_stage=$2 AND rule_version=$3 AND status='ready'`,
+      [question.id, internalStage, WRITING_RULE_VERSION],
+    );
+    if (ready.rows[0]) {
+      await client.query('COMMIT');
+      return Number(ready.rows[0].id);
+    }
     const inserted = await client.query(
       `INSERT INTO writing_question_hint_sets (question_id, internal_stage, rule_version, status) VALUES ($1, $2, $3, 'ready') ON CONFLICT (question_id, internal_stage, rule_version) DO UPDATE SET status = 'ready' RETURNING id`,
       [question.id, internalStage, WRITING_RULE_VERSION],
@@ -641,11 +842,7 @@ async function ensureHintSet(
       sample: 15,
     };
     const fallbackSkill = skillRows.rows[0]?.skill_code ?? null;
-    for (const [index, rawHint] of asArray(generated.hints)
-      .slice(0, 4)
-      .entries()) {
-      if (!rawHint || typeof rawHint !== 'object') continue;
-      const hint = rawHint as Record<string, unknown>;
+    for (const [index, hint] of hints.entries()) {
       const type = ['structure', 'grammar', 'vocabulary', 'sample'].includes(
         text(hint.type, 40),
       )
@@ -699,7 +896,7 @@ async function createQuestion(
   const requestedSkills = requiredSkillCodes.filter((code) =>
     skills.some(([skillCode]) => skillCode === code),
   );
-  const prompt = `EnPra IELTS Writing 문제를 하나 만드세요. JSON만 반환하세요.\n유형: ${taskType}; 세부 유형: ${format}; 난이도: ${difficulty}; 용도: ${purpose}; 연습 형식: ${exerciseType}.\nTask 1은 객관적 자료 분석만, Task 2는 논리적 에세이만 만드세요. FOUNDATION은 하나의 짧은 자료와 그 자료를 읽고 각각 답하는 독립 질문 3개로 구성합니다.\n${materialGuide}\n{\"title\":\"\",\"prompt\":\"영문 문제 지시문\",\"material\":{},\"solutionContext\":{\"keyFacts\":[\"\"],\"expectedAnswers\":[\"\"],\"commonMistakes\":[\"\"]},\"skills\":[{\"code\":\"t1_overview\",\"importance\":\"primary\",\"weight\":0.5}]}`;
+  const prompt = `EnPra IELTS Writing 문제를 하나 만드세요. JSON만 반환하세요.\n유형: ${taskType}; 세부 유형: ${format}; 난이도: ${difficulty}; 용도: ${purpose}; 연습 형식: ${exerciseType}.\n요구 단어 수는 별도 단계 설정에서 안내하므로 영문 지시문에 Write at least N words 같은 분량 요구를 쓰지 마세요. Task 1은 객관적 자료 분석만, Task 2는 논리적 에세이만 만드세요. FOUNDATION은 하나의 짧은 자료와 그 자료를 읽고 각각 답하는 독립 질문 3개로 구성합니다.\n${materialGuide}\n{\"title\":\"\",\"prompt\":\"영문 문제 지시문\",\"material\":{},\"solutionContext\":{\"keyFacts\":[\"\"],\"expectedAnswers\":[\"\"],\"commonMistakes\":[\"\"]},\"skills\":[{\"code\":\"t1_overview\",\"importance\":\"primary\",\"weight\":0.5}]}`;
   const generated = jsonObject(
     (
       await codex
@@ -711,6 +908,7 @@ async function createQuestion(
         )
     ).text,
   );
+  validateGeneratedQuestion(generated, taskType, format);
   const title =
     text(generated.title, 300) || `${taskType.toUpperCase()} practice`;
   const questionPrompt = text(generated.prompt, 12000);
@@ -840,7 +1038,7 @@ async function chooseQuestion(
     [taskType, exerciseType, difficulty, purpose, user.id],
   );
   return (
-    (result.rows[0] as Record<string, unknown> | undefined) ??
+    (usableBankQuestion(result.rows[0]) ? result.rows[0] as Record<string, unknown> : undefined) ??
     createQuestion(
       pool,
       codex,
@@ -867,7 +1065,7 @@ async function chooseLearningQuestion(
     [taskType, exerciseType, difficulty, user.id, learningMode],
   );
   return (
-    (result.rows[0] as Record<string, unknown> | undefined) ??
+    (usableBankQuestion(result.rows[0]) ? result.rows[0] as Record<string, unknown> : undefined) ??
     createQuestion(
       pool,
       codex,
@@ -901,7 +1099,7 @@ async function chooseReinforcementQuestion(
     `SELECT q.*, COUNT(DISTINCT qs.skill_code)::INTEGER AS matched_skill_count FROM writing_questions q JOIN writing_question_skills qs ON qs.question_id = q.id WHERE q.task_type = ANY($1::text[]) AND q.purpose IN ('general', 'main_learning') AND q.status = 'active' AND qs.skill_code = ANY($3::text[]) AND NOT EXISTS (SELECT 1 FROM writing_session_items i JOIN writing_sessions s ON s.id = i.session_id WHERE s.user_id = $4 AND i.question_id = q.id AND s.session_type = 'learning' AND s.status = 'completed' AND COALESCE(s.learning_mode, 'standard') = 'reinforcement') GROUP BY q.id ORDER BY matched_skill_count DESC, CASE WHEN q.difficulty = $2 THEN 0 ELSE 1 END, RANDOM() LIMIT 1`,
     [taskTypes, difficulty, skillCodes, user.id],
   );
-  if (result.rows[0]) return result.rows[0] as Record<string, unknown>;
+  if (usableBankQuestion(result.rows[0])) return result.rows[0] as Record<string, unknown>;
 
   const focus = focusSkills.find((skill) =>
     taskTypes.some(
@@ -938,15 +1136,17 @@ async function queryFocusSkills(pool: Pool, userId: string) {
 }
 
 async function refreshSkillStates(pool: Pool, userId: string) {
-  const profile = await queryProfile(pool, userId);
-  if (!profile || profile.onboarding_status !== 'active') return;
-  const stage = String(profile.current_internal_stage);
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    await client.query(`SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, [`writing-progress:${userId}`]);
+    const profile = await queryProfile(client, userId, true);
+    if (!profile || profile.onboarding_status !== 'active') { await client.query('COMMIT'); return; }
+    const stage = String(profile.current_internal_stage);
+    const stageStartedAt = profile.current_stage_started_at ?? profile.placement_completed_at ?? profile.created_at ?? null;
     const rows = await client.query(
-      `SELECT sr.skill_code, AVG(sr.effective_score)::NUMERIC(5,2) AS average_score, COUNT(*)::INTEGER AS evidence_count, COUNT(*) FILTER (WHERE sr.effective_score < 70)::INTEGER AS reinforcement_count, MAX(sr.attempt_result_id)::BIGINT AS last_result_id FROM writing_attempt_skill_results sr JOIN writing_attempt_results r ON r.id = sr.attempt_result_id JOIN writing_session_items i ON i.id = r.session_item_id JOIN writing_sessions s ON s.id = i.session_id WHERE s.user_id = $1 AND s.internal_stage_snapshot = $2 AND r.affects_progress = TRUE AND r.evaluated_at >= NOW() - INTERVAL '14 days' GROUP BY sr.skill_code`,
-      [userId, stage],
+      `SELECT sr.skill_code, AVG(sr.effective_score)::NUMERIC(5,2) AS average_score, COUNT(*)::INTEGER AS evidence_count, COUNT(*) FILTER (WHERE sr.effective_score < 70)::INTEGER AS reinforcement_count, MAX(sr.attempt_result_id)::BIGINT AS last_result_id FROM writing_attempt_skill_results sr JOIN writing_attempt_results r ON r.id = sr.attempt_result_id JOIN writing_session_items i ON i.id = r.session_item_id JOIN writing_sessions s ON s.id = i.session_id WHERE s.user_id = $1 AND s.internal_stage_snapshot = $2 AND r.affects_progress = TRUE AND r.evaluated_at >= NOW() - INTERVAL '14 days' AND r.evaluated_at >= COALESCE($3::timestamptz,'-infinity') AND s.started_at >= COALESCE($3::timestamptz,'-infinity') GROUP BY sr.skill_code`,
+      [userId, stage, stageStartedAt],
     );
     await client.query(
       `DELETE FROM user_writing_skill_states WHERE user_id = $1`,
@@ -979,8 +1179,8 @@ async function refreshSkillStates(pool: Pool, userId: string) {
       [userId, summary],
     );
     const evidence = await client.query(
-      `SELECT COUNT(*)::INTEGER AS count, AVG(r.effective_score) AS score FROM writing_attempt_results r JOIN writing_session_items i ON i.id=r.session_item_id JOIN writing_sessions s ON s.id=i.session_id WHERE s.user_id=$1 AND s.internal_stage_snapshot=$2 AND r.affects_progress=TRUE AND r.evaluated_at >= NOW() - INTERVAL '14 days'`,
-      [userId, stage],
+      `SELECT COUNT(*)::INTEGER AS count, AVG(r.effective_score) AS score FROM writing_attempt_results r JOIN writing_session_items i ON i.id=r.session_item_id JOIN writing_sessions s ON s.id=i.session_id WHERE s.user_id=$1 AND s.internal_stage_snapshot=$2 AND r.affects_progress=TRUE AND r.evaluated_at >= NOW() - INTERVAL '14 days' AND r.evaluated_at >= COALESCE($3::timestamptz,'-infinity') AND s.started_at >= COALESCE($3::timestamptz,'-infinity')`,
+      [userId, stage, stageStartedAt],
     );
     const count = Number(evidence.rows[0]?.count ?? 0);
     const score = Number(evidence.rows[0]?.score ?? 0);
@@ -1031,8 +1231,7 @@ async function publicOverview(pool: Pool, userId: string) {
       topSkills: [],
     };
   if (
-    profile.metrics_refreshed_for_date !==
-      new Date().toISOString().slice(0, 10) &&
+    profile.metrics_current !== true &&
     profile.onboarding_status === 'active'
   )
     await refreshSkillStates(pool, userId);
@@ -1065,7 +1264,7 @@ async function publicOverview(pool: Pool, userId: string) {
 }
 
 async function applyPlacementResult(
-  pool: Pool,
+  pool: Pick<Pool,'query'>,
   userId: string,
   sessionId: number,
 ) {
@@ -1105,7 +1304,7 @@ function serializeQuestion(row: Record<string, unknown>) {
   return {
     id: Number(row.id),
     title: row.title,
-    prompt: row.prompt,
+    prompt: writingQuestionPrompt(String(row.prompt), number(row.target_word_count,0)),
     taskType: row.task_type,
     exerciseType: row.exercise_type,
     questionFormat: row.question_format,
@@ -1146,8 +1345,8 @@ async function sessionPayload(pool: Pool, userId: string, sessionId: number) {
         structureGuidePenalty: structureGuide.rows[0]
           ? Number(structureGuide.rows[0].penalty_score)
           : 10,
-        status: current.status,
-        question: serializeQuestion(current),
+        status: current.status === 'submitted' && new Date(current.submission_started_at).getTime() < Date.now()-300_000 ? 'in_progress' : current.status,
+        question: serializeQuestion({ ...current, id: current.question_id }),
         result: current.result_id
           ? {
               answerText: current.answer_text,
@@ -1173,7 +1372,7 @@ async function sessionPayload(pool: Pool, userId: string, sessionId: number) {
       id: Number(hint.id),
       type: hint.hint_type,
       order: Number(hint.hint_order),
-      content: hint.content,
+      content: usedIds.has(Number(hint.id)) ? hint.content : undefined,
       revealed: usedIds.has(Number(hint.id)),
     }));
   }
@@ -1191,9 +1390,21 @@ async function sessionPayload(pool: Pool, userId: string, sessionId: number) {
     completedItemCount: items.rows.filter((item) => item.status === 'evaluated')
       .length,
     hints,
-    completed: current === null,
+    completed: row.status === 'completed',
     promotionRecommendation: row.promotion_recommendation,
-    promotionScore: row.promotion_score ? Number(row.promotion_score) : null,
+    promotionScore: row.promotion_score == null ? null : Number(row.promotion_score),
+    averageScore: row.status === 'completed' && row.promotion_score != null ? Number(row.promotion_score) : null,
+    results: row.status === 'completed' || row.session_type === 'learning'
+      ? items.rows.filter((item) => item.status === 'evaluated' && item.result_id).map((item) => ({
+          itemId: Number(item.id),
+          order: Number(item.item_order),
+          taskType: item.task_type,
+          answerText: item.answer_text,
+          effectiveScore: Number(item.effective_score),
+          label: item.result_label,
+          feedback: item.feedback_json,
+        }))
+      : [],
   };
 }
 
@@ -1222,6 +1433,8 @@ export async function initializeWritingDatabase(pool: Pool) {
   `);
   await pool.query(`
     ALTER TABLE writing_sessions ADD COLUMN IF NOT EXISTS learning_mode TEXT NOT NULL DEFAULT 'standard';
+    ALTER TABLE writing_session_items ADD COLUMN IF NOT EXISTS submission_token UUID;
+    ALTER TABLE writing_session_items ADD COLUMN IF NOT EXISTS submission_started_at TIMESTAMPTZ;
     ALTER TABLE user_writing_skill_states ADD COLUMN IF NOT EXISTS recent_reinforcement_count INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE writing_attempt_results ADD COLUMN IF NOT EXISTS feedback_review_status TEXT NOT NULL DEFAULT 'not_requested';
     ALTER TABLE writing_attempt_results ADD COLUMN IF NOT EXISTS answer_sections_json JSONB NOT NULL DEFAULT '[]'::jsonb;
@@ -1273,6 +1486,7 @@ export function registerWritingRoutes(
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
+      await client.query(`SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, [`writing-progress:${user.id}`]);
       await client.query(
         `DELETE FROM writing_level_change_history WHERE user_id = $1`,
         [user.id],
@@ -1313,14 +1527,14 @@ export function registerWritingRoutes(
 
   app.get('/api/writing/notebook', async (c) => {
     const rows = await pool.query(
-      `SELECT r.id, r.answer_text, r.effective_score, r.result_label, r.error_count, r.feedback_json, r.feedback_review_status, r.reviewed_feedback_json, r.feedback_reviewed_at, r.evaluated_at, q.title, q.prompt, q.material_json, q.question_format, i.task_type FROM writing_attempt_results r JOIN writing_session_items i ON i.id=r.session_item_id JOIN writing_sessions s ON s.id=i.session_id JOIN writing_questions q ON q.id=i.question_id WHERE s.user_id=$1 AND r.affects_progress=TRUE AND r.evaluation_status='completed' AND r.error_count > 0 ORDER BY r.evaluated_at DESC LIMIT 100`,
+      `SELECT r.id, r.answer_text, r.effective_score, r.result_label, r.error_count, r.feedback_json, r.feedback_review_status, r.reviewed_feedback_json, r.feedback_reviewed_at, r.evaluated_at, q.title, q.prompt, q.material_json, q.question_format, i.task_type,i.target_word_count FROM writing_attempt_results r JOIN writing_session_items i ON i.id=r.session_item_id JOIN writing_sessions s ON s.id=i.session_id JOIN writing_questions q ON q.id=i.question_id WHERE s.user_id=$1 AND s.session_type<>'placement_test' AND (s.session_type='learning' OR s.status='completed') AND r.evaluation_status='completed' AND r.error_count > 0 ORDER BY r.evaluated_at DESC LIMIT 100`,
       [c.get('user').id],
     );
     return c.json({
       entries: rows.rows.map((row) => ({
         id: Number(row.id),
         title: row.title,
-        prompt: row.prompt,
+        prompt: writingQuestionPrompt(String(row.prompt),number(row.target_word_count,0)),
         material: row.material_json,
         questionFormat: row.question_format,
         taskType: row.task_type,
@@ -1340,11 +1554,12 @@ export function registerWritingRoutes(
     });
   });
 
+  // Older deployed clients can still read/use reviewed records; the current UI needs no second AI step.
   app.post('/api/writing/notebook/review', async (c) => {
     const user = c.get('user');
     await requireConnected(codex, user.id);
     const pending = await pool.query(
-      `SELECT r.id, r.answer_text, r.feedback_json, q.title, q.prompt, q.material_json FROM writing_attempt_results r JOIN writing_session_items i ON i.id=r.session_item_id JOIN writing_sessions s ON s.id=i.session_id JOIN writing_questions q ON q.id=i.question_id WHERE s.user_id=$1 AND r.affects_progress=TRUE AND r.evaluation_status='completed' AND r.error_count > 0 AND r.feedback_review_status IN ('not_requested','failed') ORDER BY r.evaluated_at DESC LIMIT 10`,
+      `SELECT r.id, r.answer_text, r.feedback_json, q.title, q.prompt, q.material_json FROM writing_attempt_results r JOIN writing_session_items i ON i.id=r.session_item_id JOIN writing_sessions s ON s.id=i.session_id JOIN writing_questions q ON q.id=i.question_id WHERE s.user_id=$1 AND s.session_type<>'placement_test' AND (s.session_type='learning' OR s.status='completed') AND r.evaluation_status='completed' AND r.error_count > 0 AND r.feedback_review_status IN ('not_requested','failed') ORDER BY r.evaluated_at DESC LIMIT 10`,
       [user.id],
     );
     let reviewedCount = 0;
@@ -1443,14 +1658,15 @@ export function registerWritingRoutes(
           ],
         );
       }
-      await pool.query(
-        `UPDATE writing_sessions SET status='in_progress',generated_at=NOW(),updated_at=NOW() WHERE id=$1`,
+      const generated = await pool.query(
+        `UPDATE writing_sessions SET status='in_progress',generated_at=NOW(),updated_at=NOW() WHERE id=$1 AND status='generating' RETURNING id`,
         [sessionId],
       );
+      if (!generated.rowCount) throw new HTTPException(409, {res:Response.json({error:'문제 생성이 취소되었습니다.'},{status:409})});
       return c.json({ sessionId });
     } catch (error) {
       await pool.query(
-        `UPDATE writing_sessions SET status='abandoned',abandoned_at=NOW() WHERE id=$1`,
+        `UPDATE writing_sessions SET status='abandoned',abandoned_at=NOW() WHERE id=$1 AND status='generating'`,
         [sessionId],
       );
       throw error;
@@ -1589,22 +1805,43 @@ export function registerWritingRoutes(
                     hint: true,
                   },
                 ];
-    const session = await pool.query(
-      `INSERT INTO writing_sessions(user_id,session_type,learning_mode,status,public_level_snapshot,level_group_snapshot,internal_stage_snapshot,target_public_level,target_level_group,expected_item_count,rule_version) VALUES($1,$2,$3,'generating',$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
-      [
-        user.id,
-        sessionType,
-        sessionType === 'learning' ? learningMode : 'standard',
-        profile.current_public_level,
-        profile.current_level_group,
-        profile.current_internal_stage,
-        sessionType === 'promotion_test' ? targetPublic : null,
-        sessionType === 'promotion_test' ? targetGroup : null,
-        plan.length,
-        WRITING_RULE_VERSION,
-      ],
-    );
-    const sessionId = Number(session.rows[0].id);
+    const reservation = await pool.connect();
+    let sessionId: number;
+    try {
+      await reservation.query('BEGIN');
+      await reservation.query(`SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, [`writing-progress:${user.id}`]);
+      const latest = await reservation.query(`SELECT * FROM user_writing_profiles WHERE user_id=$1 FOR UPDATE`, [user.id]);
+      const currentProfile = latest.rows[0];
+      if (!currentProfile || currentProfile.onboarding_status !== 'active' ||
+          currentProfile.current_public_level !== profile.current_public_level ||
+          (currentProfile.current_level_group ?? null) !== (profile.current_level_group ?? null) ||
+          currentProfile.current_internal_stage !== profile.current_internal_stage) {
+        await reservation.query('ROLLBACK');
+        return c.json({ error: '학습 단계가 변경되었습니다. 새로고침한 뒤 다시 시작해 주세요.' }, 409);
+      }
+      const reserved = await reservation.query(
+        `SELECT id FROM writing_sessions WHERE user_id=$1 AND status IN ('generating','in_progress') LIMIT 1`,
+        [user.id],
+      );
+      if (reserved.rowCount) {
+        await reservation.query('ROLLBACK');
+        return c.json({ activeSessionId: Number(reserved.rows[0].id) }, 409);
+      }
+      const session = await reservation.query(
+        `INSERT INTO writing_sessions(user_id,session_type,learning_mode,status,public_level_snapshot,level_group_snapshot,internal_stage_snapshot,target_public_level,target_level_group,expected_item_count,rule_version) VALUES($1,$2,$3,'generating',$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+        [user.id, sessionType, sessionType === 'learning' ? learningMode : 'standard',
+          profile.current_public_level, profile.current_level_group, profile.current_internal_stage,
+          sessionType === 'promotion_test' ? targetPublic : null,
+          sessionType === 'promotion_test' ? targetGroup : null, plan.length, WRITING_RULE_VERSION],
+      );
+      sessionId = Number(session.rows[0].id);
+      await reservation.query('COMMIT');
+    } catch (error) {
+      await reservation.query('ROLLBACK');
+      throw error;
+    } finally {
+      reservation.release();
+    }
     try {
       if (learningMode === 'reinforcement')
         for (const skill of focusSkills)
@@ -1612,8 +1849,11 @@ export function registerWritingRoutes(
             `INSERT INTO writing_session_focus_skills(session_id,skill_code) VALUES($1,$2) ON CONFLICT DO NOTHING`,
             [sessionId, skill.code],
           );
+      const assessmentStage = sessionType === 'promotion_test'
+        ? stageFor(targetPublic, targetGroup)
+        : String(profile.current_internal_stage);
       const challengeRatio = Number(
-        configForStage(String(profile.current_internal_stage)).challengeRatio ??
+        configForStage(assessmentStage).challengeRatio ??
           0,
       );
       for (const [index, entry] of plan.entries()) {
@@ -1662,7 +1902,7 @@ export function registerWritingRoutes(
           : null;
         const count = null;
         const targetWords = targetWordCountFor(
-          String(profile.current_internal_stage),
+          assessmentStage,
           questionTask,
         );
         await pool.query(
@@ -1680,14 +1920,15 @@ export function registerWritingRoutes(
           ],
         );
       }
-      await pool.query(
-        `UPDATE writing_sessions SET status='in_progress',generated_at=NOW(),updated_at=NOW() WHERE id=$1`,
+      const generated = await pool.query(
+        `UPDATE writing_sessions SET status='in_progress',generated_at=NOW(),updated_at=NOW() WHERE id=$1 AND status='generating' RETURNING id`,
         [sessionId],
       );
+      if (!generated.rowCount) throw new HTTPException(409, {res:Response.json({error:'문제 생성이 취소되었습니다.'},{status:409})});
       return c.json({ sessionId });
     } catch (error) {
       await pool.query(
-        `UPDATE writing_sessions SET status='abandoned',abandoned_at=NOW() WHERE id=$1`,
+        `UPDATE writing_sessions SET status='abandoned',abandoned_at=NOW() WHERE id=$1 AND status='generating'`,
         [sessionId],
       );
       throw error;
@@ -1701,21 +1942,30 @@ export function registerWritingRoutes(
       const sessionId = Number(c.req.param('sessionId'));
       const itemId = Number(c.req.param('itemId'));
       const hintId = Number(c.req.param('hintId'));
-      const valid = await pool.query(
-        `SELECT 1 FROM writing_session_items i JOIN writing_sessions s ON s.id=i.session_id JOIN writing_question_hint_sets hs ON hs.id=i.hint_set_id JOIN writing_question_hints h ON h.hint_set_id=hs.id WHERE s.id=$1 AND s.user_id=$2 AND i.id=$3 AND h.id=$4 AND s.session_type='learning'`,
+      const client = await pool.connect();
+      try {
+      await client.query('BEGIN');
+      const valid = await client.query(
+        `SELECT 1 FROM writing_session_items i JOIN writing_sessions s ON s.id=i.session_id JOIN writing_question_hint_sets hs ON hs.id=i.hint_set_id JOIN writing_question_hints h ON h.hint_set_id=hs.id WHERE s.id=$1 AND s.user_id=$2 AND i.id=$3 AND h.id=$4 AND s.session_type='learning' AND s.status='in_progress' AND i.status IN ('pending','in_progress') FOR UPDATE OF s,i`,
         [sessionId, user.id, itemId, hintId],
       );
-      if (!valid.rowCount)
+      if (!valid.rowCount) {
+        await client.query('ROLLBACK');
         return c.json({ error: '열 수 없는 힌트입니다.' }, 404);
-      await pool.query(
-        `INSERT INTO writing_hint_usage_events(session_item_id,hint_id) VALUES($1,$2) ON CONFLICT DO NOTHING`,
-        [itemId, hintId],
+      }
+      await client.query(
+        `INSERT INTO writing_hint_usage_events(session_item_id,hint_id) SELECT i.id,$2 FROM writing_session_items i JOIN writing_sessions s ON s.id=i.session_id WHERE i.id=$1 AND s.id=$3 AND s.user_id=$4 AND s.status='in_progress' AND i.status IN ('pending','in_progress') ON CONFLICT DO NOTHING`,
+        [itemId, hintId, sessionId, user.id],
       );
-      const hint = await pool.query(
-        `SELECT content FROM writing_question_hints WHERE id=$1`,
-        [hintId],
+      const hint = await client.query(
+        `SELECT h.content FROM writing_question_hints h JOIN writing_hint_usage_events e ON e.hint_id=h.id WHERE h.id=$1 AND e.session_item_id=$2`,
+        [hintId,itemId],
       );
+      if (!hint.rowCount) { await client.query('ROLLBACK'); return c.json({error:'힌트를 열 수 없습니다.'},404); }
+      await client.query('COMMIT');
       return c.json({ content: hint.rows[0]?.content ?? '' });
+      } catch(error) { await client.query('ROLLBACK'); throw error; }
+      finally { client.release(); }
     },
   );
 
@@ -1725,28 +1975,37 @@ export function registerWritingRoutes(
       const user = c.get('user');
       const sessionId = Number(c.req.param('sessionId'));
       const itemId = Number(c.req.param('itemId'));
-      const valid = await pool.query(
-        `SELECT 1 FROM writing_session_items i JOIN writing_sessions s ON s.id=i.session_id WHERE s.id=$1 AND s.user_id=$2 AND i.id=$3 AND s.session_type='learning' AND i.task_type IN ('task1','task2') AND i.status IN ('pending','in_progress')`,
+      const client = await pool.connect();
+      try {
+      await client.query('BEGIN');
+      const valid = await client.query(
+        `SELECT 1 FROM writing_session_items i JOIN writing_sessions s ON s.id=i.session_id WHERE s.id=$1 AND s.user_id=$2 AND i.id=$3 AND s.session_type='learning' AND s.status='in_progress' AND i.task_type IN ('task1','task2') AND i.status IN ('pending','in_progress') FOR UPDATE OF s,i`,
         [sessionId, user.id, itemId],
       );
-      if (!valid.rowCount)
+      if (!valid.rowCount) {
+        await client.query('ROLLBACK');
         return c.json({ error: '이 문제에서는 문단 구조 가이드를 사용할 수 없습니다.' }, 404);
-      const existing = await pool.query(
+      }
+      const existing = await client.query(
         `SELECT 1 FROM writing_session_item_scaffolds WHERE session_item_id=$1 AND scaffold_type='paragraph_structure'`,
         [itemId],
       );
       if (existing.rowCount) {
-        await pool.query(
+        await client.query(
           `DELETE FROM writing_session_item_scaffolds WHERE session_item_id=$1 AND scaffold_type='paragraph_structure'`,
           [itemId],
         );
+        await client.query('COMMIT');
         return c.json({ enabled: false });
       }
-      await pool.query(
+      await client.query(
         `INSERT INTO writing_session_item_scaffolds(session_item_id,scaffold_type,penalty_score) VALUES($1,'paragraph_structure',10) ON CONFLICT(session_item_id,scaffold_type) DO NOTHING`,
         [itemId],
       );
+      await client.query('COMMIT');
       return c.json({ enabled: true });
+      } catch(error) {await client.query('ROLLBACK');throw error;}
+      finally {client.release();}
     },
   );
 
@@ -1758,14 +2017,43 @@ export function registerWritingRoutes(
       const itemId = Number(c.req.param('itemId'));
       const body = await readBody(c);
       const answer = text(body.answer, 30000);
-      const answerSections = normalizedAnswerSections(body.answerSections);
+      let answerSections = normalizedAnswerSections(body.answerSections);
       if (!answer) return c.json({ error: '답안을 입력해 주세요.' }, 400);
       const itemResult = await pool.query(
-        `SELECT i.*,q.prompt,q.material_json,q.solution_context,s.session_type,s.internal_stage_snapshot,s.public_level_snapshot FROM writing_session_items i JOIN writing_sessions s ON s.id=i.session_id JOIN writing_questions q ON q.id=i.question_id WHERE s.id=$1 AND s.user_id=$2 AND i.id=$3 AND i.status IN ('pending','in_progress')`,
+        `SELECT i.*,q.prompt,q.material_json,q.solution_context,s.session_type,s.internal_stage_snapshot,s.public_level_snapshot,s.target_public_level,s.target_level_group,s.rule_version FROM writing_session_items i JOIN writing_sessions s ON s.id=i.session_id JOIN writing_questions q ON q.id=i.question_id WHERE s.id=$1 AND s.user_id=$2 AND i.id=$3 AND s.status='in_progress' AND (i.status IN ('pending','in_progress') OR (i.status='submitted' AND i.submission_started_at<NOW()-INTERVAL '5 minutes'))`,
         [sessionId, user.id, itemId],
       );
       const item = itemResult.rows[0] as Record<string, unknown> | undefined;
-      if (!item) return c.json({ error: '제출할 수 없는 문제입니다.' }, 409);
+      if (!item) {
+        const saved = await pool.query(
+          `SELECT r.answer_text,r.answer_sections_json,r.effective_score,r.result_label,r.feedback_json,i.task_type,q.material_json FROM writing_attempt_results r JOIN writing_session_items i ON i.id=r.session_item_id JOIN writing_sessions s ON s.id=i.session_id JOIN writing_questions q ON q.id=i.question_id WHERE s.id=$1 AND s.user_id=$2 AND i.id=$3 AND r.evaluation_status='completed' AND s.status<>'abandoned'`,
+          [sessionId,user.id,itemId],
+        );
+        const previous = saved.rows[0];
+        const sections = previous?.task_type === 'foundation' && !answerSections.length ? legacyFoundationSections(answer,previous.material_json) : answerSections;
+        if (!previous || (previous.task_type!=='foundation' && previous.answer_text!==answer) || JSON.stringify(normalizedAnswerSections(previous.answer_sections_json))!==JSON.stringify(sections))
+          return c.json({ error: '제출할 수 없는 문제입니다. 세션을 다시 확인해 주세요.' }, 409);
+        try { await refreshSkillStates(pool,user.id); } catch { console.error('Writing metrics refresh deferred'); }
+        const session = await sessionPayload(pool,user.id,sessionId);
+        return c.json({submitted:true,replayed:true,result:session?.type==='learning'||session?.status==='completed'?{effectiveScore:Number(previous.effective_score),label:previous.result_label,feedback:previous.feedback_json}:null,session});
+      }
+      if (item.task_type === 'foundation' && !answerSections.length)
+        answerSections = legacyFoundationSections(answer, item.material_json);
+      if (item.task_type === 'foundation' && (answerSections.length !== 3 || answerSections.some((section) => !section.text)))
+        return c.json({ error: '세 질문에 각각 답안을 입력해 주세요.' }, 400);
+      const answerContent = item.task_type === 'foundation'
+        ? answerSections.map((section) => section.text).join('\n\n')
+        : answer;
+      const submissionToken = randomUUID();
+      const claimed = await pool.query(
+        `UPDATE writing_session_items i SET status='submitted',submission_token=$4,submission_started_at=NOW()
+         FROM writing_sessions s WHERE i.session_id=s.id AND s.id=$1 AND s.user_id=$2 AND i.id=$3 AND s.status='in_progress'
+         AND (i.status IN ('pending','in_progress') OR (i.status='submitted' AND i.submission_started_at<NOW()-INTERVAL '5 minutes'))
+         AND NOT EXISTS(SELECT 1 FROM writing_session_items earlier WHERE earlier.session_id=s.id AND earlier.item_order<i.item_order AND earlier.status<>'evaluated') RETURNING i.id`,
+        [sessionId,user.id,itemId,submissionToken],
+      );
+      if (!claimed.rowCount) return c.json({error:'이미 처리 중이거나 현재 제출 순서가 아닙니다. 세션을 다시 확인해 주세요.'},409);
+      try {
       await requireConnected(codex, user.id);
       const usedHints = await pool.query(
         `SELECT h.skill_code,h.penalty_score,h.hint_type FROM writing_hint_usage_events e JOIN writing_question_hints h ON h.id=e.hint_id WHERE e.session_item_id=$1`,
@@ -1788,26 +2076,34 @@ export function registerWritingRoutes(
           : item.task_type === 'task2'
             ? 'task2'
             : 'foundation';
-      const targetWords = number(item.target_word_count, 0);
+      let targetWords = number(item.target_word_count, 0);
       const taskCriterion =
         task === 'task2' ? 'Task Response' : 'Task Achievement';
-      const stageExpectation = expectationFor(
-        String(item.internal_stage_snapshot),
-        task,
-      );
-      const baseQualityControls =
-        item.rule_version === WRITING_RULE_VERSION
-          ? qualityControlsFor(String(item.internal_stage_snapshot))
-          : '이 세션이 시작된 당시의 단계별 채점 기준을 유지한다.';
+      const assessmentStage = item.session_type === 'promotion_test'
+        ? stageFor(item.target_public_level as PublicLevel, item.target_level_group as string | null)
+        : String(item.internal_stage_snapshot);
+      const ruleVersion = String(item.rule_version);
+      const ruleConfig = await assessmentConfig(pool, assessmentStage, ruleVersion);
+      if (item.session_type === 'promotion_test' && validRecord(ruleConfig.targetWordCounts))
+        targetWords = number(ruleConfig.targetWordCounts[task], targetWords);
+      item.prompt = writingQuestionPrompt(String(item.prompt),targetWords);
+      const expectation = validRecord(ruleConfig.expectation) ? ruleConfig.expectation : {};
+      const stageExpectation = text(expectation[task === 'foundation' ? 'task1' : task], 4000);
+      const baseQualityControls = text(ruleConfig.qualityControls, 8000) || '이 세션이 시작된 당시의 단계별 채점 기준을 유지한다.';
       const qualityControls = `${baseQualityControls}\n문단 구조 가이드 사용: ${structureGuidePenalty > 0 ? '예' : '아니오'}. 문단별 입력: ${JSON.stringify(answerSections)}. 문단 구조 가이드를 사용했더라도 각 문단이 해당 역할을 수행하는지는 답안 품질 기준으로 평가한다. 가이드 사용에 따른 최종 점수 감점은 서버가 별도로 처리한다.`;
       const foundationInstruction =
         task === 'foundation'
           ? '자료의 질문 3개에 각각 답했는지와 각 답이 해당 질문의 핵심 사실에 맞는지 우선 평가한다. 세 답을 하나의 단락으로 자연스럽게 연결할 필요는 없고, 각 답은 한 문장으로도 충분하다.'
           : '해당 없음';
-      const prompt = `EnPra IELTS Writing 답안을 채점하세요. JSON만 반환하세요. 이것은 공식 IELTS 점수표 자체가 아니라, 공식 IELTS Writing public band descriptors의 4개 축을 내부 학습 단계에 적용한 0~100 수행 점수입니다.\n현재 내부 단계: ${item.internal_stage_snapshot}\n이 단계의 과제 기대치: ${stageExpectation}\n이 단계의 표현·응집·문법 기준: ${qualityControls}\n과제: ${task}; 핵심 과제 축: ${taskCriterion}; 목표 최소 분량: ${targetWords > 0 ? `${targetWords}단어` : '짧은 질문 3개에 각각 답하기'}.\n문제: ${item.prompt}\n자료: ${JSON.stringify(item.material_json)}\n내부 정답 정보: ${JSON.stringify(item.solution_context)}\n사용자 답안: ${answer}\n평가 스킬: ${skillRows.rows.map((row) => row.skill_code).join(', ')}\n\n채점 원칙:\n1. 같은 답안이라도 현재 내부 단계의 기대치로 평가한다. 5.0C에서는 Band 5 목표를 충족하면 높은 점수를 받을 수 있지만, 7.0A에서는 Band 7 목표를 충족해야 같은 높은 점수를 받을 수 있다.\n2. ${task === 'task1' ? '자료를 정확히 읽고 Overview·핵심 특징·비교를 평가한다.' : task === 'task2' ? '질문의 모든 부분, 명확한 입장, 근거의 발전을 평가한다.' : '기초 문장의 정확성·연결·과제 충족을 평가한다.'}\n3. FOUNDATION 추가 원칙: ${foundationInstruction}\n4. 분량이 목표보다 짧으면 ${taskCriterion}에 반영한다. 다만 단어 수만으로 점수를 높게 주지 말고 내용의 질과 정확성을 우선한다.\n5. Coherence & Cohesion, Lexical Resource, Grammatical Range & Accuracy를 각각 독립적으로 평가한다. 힌트 감점은 서버가 별도로 처리하므로 여기서는 감점하지 않는다.\n6. rawScore는 아래 4개 기준 점수의 산술평균을 반올림해 작성한다.\n\n반드시 {\"rawScore\":0,\"resultLabel\":\"pass|partial|needs_practice\",\"errorCount\":0,\"criteria\":{\"taskAchievementOrResponse\":0,\"taskAchievementOrResponseEvidence\":\"\",\"coherenceCohesion\":0,\"coherenceCohesionEvidence\":\"\",\"lexicalResource\":0,\"lexicalResourceEvidence\":\"\",\"grammaticalRangeAccuracy\":0,\"grammaticalRangeAccuracyEvidence\":\"\"},\"feedback\":{\"correctedAnswer\":\"\",\"errors\":[{\"original\":\"\",\"correction\":\"\",\"reason\":\"\"}],\"synonyms\":[\"\"],\"usefulExpressions\":[\"\"],\"improvedAnswer\":\"\",\"keyLearning\":\"\",\"nextFocus\":\"\"},\"skills\":[{\"code\":\"\",\"qualityScore\":0,\"evidenceSummary\":\"\"}]} 형식으로 반환하세요.`;
+      const prompt = `EnPra IELTS Writing 답안을 채점하세요. JSON만 반환하세요. 이것은 공식 IELTS 점수표 자체가 아니라, 공식 IELTS Writing public band descriptors의 4개 축을 내부 학습 단계에 적용한 0~100 수행 점수입니다.\n현재 내부 단계: ${assessmentStage}\n이 단계의 과제 기대치: ${stageExpectation}\n이 단계의 표현·응집·문법 기준: ${qualityControls}\n과제: ${task}; 핵심 과제 축: ${taskCriterion}; 목표 최소 분량: ${targetWords > 0 ? `${targetWords}단어` : '짧은 질문 3개에 각각 답하기'}.\n문제: ${item.prompt}\n자료: ${JSON.stringify(item.material_json)}\n내부 정답 정보: ${JSON.stringify(item.solution_context)}\n사용자 답안: ${answerContent}\n평가 스킬: ${skillRows.rows.map((row) => row.skill_code).join(', ')}\n\n채점 원칙:\n1. 같은 답안이라도 현재 내부 단계의 기대치로 평가한다. 5.0C에서는 Band 5 목표를 충족하면 높은 점수를 받을 수 있지만, 7.0A에서는 Band 7 목표를 충족해야 같은 높은 점수를 받을 수 있다.\n2. ${task === 'task1' ? '자료를 정확히 읽고 Overview·핵심 특징·비교를 평가한다.' : task === 'task2' ? '질문의 모든 부분, 명확한 입장, 근거의 발전을 평가한다.' : '기초 문장의 정확성·연결·과제 충족을 평가한다.'}\n3. FOUNDATION 추가 원칙: ${foundationInstruction}\n4. 분량이 목표보다 짧으면 ${taskCriterion}에 반영한다. 다만 단어 수만으로 점수를 높게 주지 말고 내용의 질과 정확성을 우선한다.\n5. Coherence & Cohesion, Lexical Resource, Grammatical Range & Accuracy를 각각 독립적으로 평가한다. 힌트 감점은 서버가 별도로 처리하므로 여기서는 감점하지 않는다.\n6. rawScore는 아래 4개 기준 점수의 산술평균을 반올림해 작성한다.\n\n피드백은 첫 채점에서 바로 읽기 좋게 정리하고 전달된 JSON 스키마를 정확히 따르세요. correctedAnswer는 사용자 의미를 유지한 최소 교정 답안입니다. errors는 실제 오류의 원문·교정·한국어 이유입니다. synonymGroups에는 실제 영어 유의어·대체어 쌍만 넣고(예: increase → rise), 영어 단어 = 한국어 뜻은 유의어가 아니므로 넣지 마세요. usefulExpressions에는 활용 구문과 한국어 뜻, 문제 자료와 답안 맥락에 근거한 완전한 영어 예문을 분리해서 넣으세요. improvedAnswer는 보완한 전체 영어 답안 문자열이며 문단 사이에 빈 줄을 넣어 구분하세요. 사용자의 뜻을 유지하고, 사용자에게 없는 개인 경험이나 사실을 만들어 넣지 마세요. keyLearningPoints에는 핵심 학습 포인트를 한국어로 1~3개, nextFocus에는 다음 보완 목표를 짧게 쓰세요. 같은 어휘·표현을 두 구역에 반복하지 마세요.`;
       const evaluation = jsonObject(
-        (await codex.get(user.id).runLearningPrompt(prompt)).text,
+        (await codex.get(user.id).runLearningPrompt(
+          `${prompt}\n오류 위치 규칙: errors.original은 사용자 답안에 실제로 있는 원문을 대소문자·공백·구두점까지 그대로 인용하세요. occurrence는 그 original 문자열이 답안에 등장하는 순서를 1부터 센 정수입니다. 각 항목에는 하나의 교정만 넣고, 같은 위치의 같은 교정을 짧은 인용과 긴 인용으로 중복 설명하지 마세요. 서로 다른 위치에서 반복된 오류는 각각 별도 항목입니다. errors는 핵심 오류의 교정 설명으로 전체 오류의 일부일 수 있습니다. errorCount는 설명 항목 수와 별도로 답안 전체에서 중복 없이 센 실제 오류 수입니다.`,
+          gradingOutputSchema,
+        )).text,
       );
+      validateEvaluation(evaluation);
+      normalizeEvaluationErrors(evaluation, answerContent);
       const criteria = criterionRows(evaluation, task);
       const rawScore = Math.round(
         criteria.reduce((sum, criterion) => sum + criterion.score, 0) /
@@ -1827,11 +2123,16 @@ export function registerWritingRoutes(
           : effectiveScore >= 60
             ? 'partial'
             : 'needs_practice';
-      const words = answer.trim().split(/\s+/).filter(Boolean).length;
-      const affects = item.session_type !== 'placement_test';
+      const words = answerContent.trim().split(/\s+/).filter(Boolean).length;
+      const affects = item.session_type === 'learning' || item.session_type === 'test';
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
+        await client.query(`SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, [`writing-progress:${user.id}`]);
+        const lockedSession = await client.query(`SELECT * FROM writing_sessions WHERE id=$1 AND user_id=$2 FOR UPDATE`, [sessionId,user.id]);
+        const lockedItem = await client.query(`SELECT status,submission_token FROM writing_session_items WHERE id=$1 AND session_id=$2 FOR UPDATE`, [itemId,sessionId]);
+        if (lockedSession.rows[0]?.status !== 'in_progress' || lockedItem.rows[0]?.status !== 'submitted' || lockedItem.rows[0]?.submission_token !== submissionToken)
+          throw new HTTPException(409,{res:Response.json({error:'취소되었거나 새 요청으로 대체된 제출입니다.'},{status:409})});
         const feedback =
           evaluation.feedback && typeof evaluation.feedback === 'object'
             ? (evaluation.feedback as Record<string, unknown>)
@@ -1843,7 +2144,7 @@ export function registerWritingRoutes(
             answer,
             JSON.stringify(answerSections),
             words,
-            [...answer].length,
+            [...answerContent].length,
             rawScore,
             hintPenalty,
             effectiveScore,
@@ -1852,7 +2153,7 @@ export function registerWritingRoutes(
             JSON.stringify({ ...feedback, criteria, stageExpectation, structureGuideUsed: structureGuidePenalty > 0, structureGuidePenalty }),
             affects,
             item.session_type === 'learning',
-            WRITING_RULE_VERSION,
+            ruleVersion,
           ],
         );
         const attemptId = Number(result.rows[0].id);
@@ -1864,7 +2165,7 @@ export function registerWritingRoutes(
               attemptId,
               criterion.code,
               criterion.score,
-              `${item.internal_stage_snapshot} · ${taskCriterion}`,
+              `${assessmentStage} · ${taskCriterion}`,
               criterion.evidence,
             ],
           );
@@ -1919,7 +2220,9 @@ export function registerWritingRoutes(
               promotion ? (avg >= 80 ? 'ready' : 'not_recommended') : null,
             ],
           );
+          if (item.session_type === 'placement_test') await applyPlacementResult(client,user.id,sessionId);
         }
+        if (affects) await client.query(`UPDATE user_writing_profiles SET metrics_refreshed_for_date=NULL WHERE user_id=$1`, [user.id]);
         await client.query('COMMIT');
       } catch (error) {
         await client.query('ROLLBACK');
@@ -1927,20 +2230,28 @@ export function registerWritingRoutes(
       } finally {
         client.release();
       }
-      if (affects) await refreshSkillStates(pool, user.id);
-      else await applyPlacementResult(pool, user.id, sessionId);
+      if (affects) {
+        try { await refreshSkillStates(pool, user.id); }
+        catch { console.error('Writing metrics refresh deferred'); }
+      }
+      const session = await sessionPayload(pool, user.id, sessionId);
+      if (!session) throw new HTTPException(409,{res:Response.json({error:'초기화되었거나 삭제된 세션입니다.'},{status:409})});
       return c.json({
         submitted: true,
-        result: {
+        result: session?.type === 'learning' || session?.status === 'completed' ? {
           effectiveScore,
           label: resultLabel,
           feedback:
             evaluation.feedback && typeof evaluation.feedback === 'object'
               ? evaluation.feedback
               : {},
-        },
-        session: await sessionPayload(pool, user.id, sessionId),
+        } : null,
+        session,
       });
+      } catch (error) {
+        await pool.query(`UPDATE writing_session_items i SET status='in_progress',submission_token=NULL,submission_started_at=NULL FROM writing_sessions s WHERE i.session_id=s.id AND s.id=$1 AND s.user_id=$2 AND i.id=$3 AND s.status='in_progress' AND i.status='submitted' AND i.submission_token=$4`, [sessionId,user.id,itemId,submissionToken]);
+        throw error;
+      }
     },
   );
 
@@ -1967,24 +2278,33 @@ export function registerWritingRoutes(
     const group = text(body.targetLevelGroup, 40) || null;
     if (!levelOrder.includes(target))
       return c.json({ error: '올바른 레벨이 아닙니다.' }, 400);
-    const active = await getActiveSession(pool, user.id);
-    if (active) return c.json({ activeSessionId: Number(active.id) }, 409);
-    const profile = await queryProfile(pool, user.id);
+    const client = await pool.connect();
+    try {
+    await client.query('BEGIN');
+    await client.query(`SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, [`writing-progress:${user.id}`]);
+    const profile = await queryProfile(client, user.id, true);
+    const active = await getActiveSession(client, user.id);
+    if (active) {
+      await client.query('ROLLBACK');
+      return c.json({ activeSessionId: Number(active.id) }, 409);
+    }
     if (
       !profile ||
       levelOrder.indexOf(target) >=
         levelOrder.indexOf(profile.current_public_level as PublicLevel)
-    )
+    ) {
+      await client.query('ROLLBACK');
       return c.json({ error: '현재보다 낮은 레벨만 선택할 수 있습니다.' }, 400);
+    }
     const stage = stageFor(target, group);
-    await pool.query(
+    await client.query(
       `UPDATE user_writing_profiles SET current_public_level=$2,current_level_group=$3,current_internal_stage=$4,current_stage_started_at=NOW(),metrics_refreshed_for_date=NULL,updated_at=NOW() WHERE user_id=$1`,
       [user.id, target, group, stage],
     );
-    await pool.query(`DELETE FROM user_writing_skill_states WHERE user_id=$1`, [
+    await client.query(`DELETE FROM user_writing_skill_states WHERE user_id=$1`, [
       user.id,
     ]);
-    await pool.query(
+    await client.query(
       `INSERT INTO writing_level_change_history(user_id,from_public_level,from_level_group,to_public_level,to_level_group,change_type) VALUES($1,$2,$3,$4,$5,'manual_demotion')`,
       [
         user.id,
@@ -1994,39 +2314,63 @@ export function registerWritingRoutes(
         group,
       ],
     );
+    await client.query('COMMIT');
     return c.json({ changed: true, level: levelLabel(target, group) });
+    } catch(error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {client.release();}
   });
 
   app.post('/api/writing/sessions/:sessionId/apply-promotion', async (c) => {
     const user = c.get('user');
     const sessionId = Number(c.req.param('sessionId'));
-    const session = await pool.query(
-      `SELECT * FROM writing_sessions WHERE id=$1 AND user_id=$2 AND session_type='promotion_test' AND status='completed' AND promotion_recommendation='ready'`,
-      [sessionId, user.id],
-    );
-    const row = session.rows[0] as Record<string, unknown> | undefined;
-    if (!row)
-      return c.json({ error: '적용 가능한 승급 결과가 없습니다.' }, 409);
-    const target = row.target_public_level as PublicLevel;
-    const group = row.target_level_group as string | null;
-    await pool.query(
-      `UPDATE user_writing_profiles SET current_public_level=$2,current_level_group=$3,current_internal_stage=$4,current_stage_started_at=NOW(),metrics_refreshed_for_date=NULL,updated_at=NOW() WHERE user_id=$1`,
-      [user.id, target, group, stageFor(target, group)],
-    );
-    await pool.query(`DELETE FROM user_writing_skill_states WHERE user_id=$1`, [
-      user.id,
-    ]);
-    await pool.query(
-      `INSERT INTO writing_level_change_history(user_id,from_public_level,from_level_group,to_public_level,to_level_group,change_type,source_session_id) VALUES($1,$2,$3,$4,$5,'promotion',$6)`,
-      [
-        user.id,
-        row.public_level_snapshot,
-        row.level_group_snapshot,
-        target,
-        group,
-        sessionId,
-      ],
-    );
-    return c.json({ promoted: true, level: levelLabel(target, group) });
+    if (!Number.isSafeInteger(sessionId) || sessionId < 1)
+      return c.json({ error: '올바른 승급 세션이 아닙니다.' }, 400);
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(`SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, [`writing-progress:${user.id}`]);
+      // Serialize applications for this learner, including replay checks and the profile update.
+      const profileResult = await client.query(`SELECT * FROM user_writing_profiles WHERE user_id=$1 FOR UPDATE`, [user.id]);
+      const profile = profileResult.rows[0];
+      const session = await client.query(
+        `SELECT * FROM writing_sessions WHERE id=$1 AND user_id=$2 AND session_type='promotion_test' AND status='completed' AND promotion_recommendation='ready' FOR UPDATE`,
+        [sessionId, user.id],
+      );
+      const row = session.rows[0] as Record<string, unknown> | undefined;
+      const applied = await client.query(
+        `SELECT 1 FROM writing_level_change_history WHERE user_id=$1 AND source_session_id=$2 AND change_type='promotion'`,
+        [user.id, sessionId],
+      );
+      const active = await client.query(
+        `SELECT id FROM writing_sessions WHERE user_id=$1 AND status IN ('generating','in_progress') LIMIT 1`,
+        [user.id],
+      );
+      if (!row || !profile || applied.rowCount || active.rowCount ||
+          profile.current_public_level !== row.public_level_snapshot ||
+          levelOrder.indexOf(row.target_public_level as PublicLevel) <= levelOrder.indexOf(profile.current_public_level as PublicLevel)) {
+        await client.query('ROLLBACK');
+        return c.json({ error: '현재 학습 상태에서 적용 가능한 새 승급 결과가 없습니다.' }, 409);
+      }
+      const target = row.target_public_level as PublicLevel;
+      const group = row.target_level_group as string | null;
+      await client.query(
+        `UPDATE user_writing_profiles SET current_public_level=$2,current_level_group=$3,current_internal_stage=$4,current_stage_started_at=NOW(),metrics_refreshed_for_date=NULL,updated_at=NOW() WHERE user_id=$1`,
+        [user.id, target, group, stageFor(target, group)],
+      );
+      await client.query(`DELETE FROM user_writing_skill_states WHERE user_id=$1`, [user.id]);
+      await client.query(
+        `INSERT INTO writing_level_change_history(user_id,from_public_level,from_level_group,to_public_level,to_level_group,change_type,source_session_id) VALUES($1,$2,$3,$4,$5,'promotion',$6)`,
+        [user.id, row.public_level_snapshot, row.level_group_snapshot, target, group, sessionId],
+      );
+      await client.query('COMMIT');
+      return c.json({ promoted: true, level: levelLabel(target, group) });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   });
 }

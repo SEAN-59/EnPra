@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { Pool, PoolClient } from 'pg';
 
 import { CodexRegistry } from './codex.js';
+import { initializePersonalVocabularyDatabase } from './personal-vocabulary.js';
 
 type DifficultyBand = 'under_5' | 'band_5' | 'band_6' | 'band_7_plus';
 type VocabularySense = { partOfSpeech: string; text: string };
@@ -244,7 +245,7 @@ async function getActiveBatch(client: PoolClient, runId: string) {
 
 async function getExcludedWords(client: PoolClient, runId: string, activeBatch: number) {
   const result = await client.query<{ normalized_word: string }>(
-    `SELECT normalized_word FROM vocabulary_words
+    `SELECT normalized_word FROM vocabulary_words WHERE is_canonical=TRUE
      UNION
      SELECT normalized_word FROM vocabulary_build_candidates WHERE run_id = $1 AND build_batch < $2
      ORDER BY normalized_word`,
@@ -265,7 +266,7 @@ async function saveCandidates(client: PoolClient, runId: string, buildBatch: num
     const result = await client.query(
       `INSERT INTO vocabulary_build_candidates (run_id, normalized_word, word, pronunciation_ipa, difficulty_band, build_batch, senses)
        SELECT $1, $2, $3, $4, $5, $6, $7::jsonb
-       WHERE NOT EXISTS (SELECT 1 FROM vocabulary_words WHERE normalized_word = $2)
+       WHERE NOT EXISTS (SELECT 1 FROM vocabulary_words WHERE normalized_word = $2 AND is_canonical=TRUE)
        ON CONFLICT (run_id, normalized_word) DO NOTHING`,
       [runId, candidate.normalizedWord, candidate.word, candidate.pronunciationIpa, candidate.difficultyBand, buildBatch, JSON.stringify(candidate.senses)],
     );
@@ -337,7 +338,7 @@ async function finalizeRun(run: BuildRun) {
       `SELECT c.normalized_word
        FROM vocabulary_build_candidates c
        JOIN vocabulary_words w ON w.normalized_word = c.normalized_word
-       WHERE c.run_id = $1 LIMIT 1`,
+       WHERE c.run_id = $1 AND w.is_canonical=TRUE LIMIT 1`,
       [run.id],
     );
     if (collision.rows[0]) throw new Error(`생성 중 기존 단어와 겹친 항목이 있어 확정할 수 없습니다: ${collision.rows[0].normalized_word}`);
@@ -383,8 +384,10 @@ async function finalizeRun(run: BuildRun) {
     for (const plan of listPlans) nextSort.set(listIds.get(plan.title)!, 0);
     for (const { candidate, listId } of placements) {
       const wordResult = await client.query<{ id: string }>(
-        `INSERT INTO vocabulary_words (word, normalized_word, pronunciation_ipa, difficulty_band)
-         VALUES ($1, $2, $3, $4) RETURNING id`,
+        `INSERT INTO vocabulary_words (word, normalized_word, pronunciation_ipa, difficulty_band,is_canonical)
+         VALUES ($1, $2, $3, $4,TRUE) ON CONFLICT(normalized_word) DO UPDATE SET
+           word=EXCLUDED.word,pronunciation_ipa=EXCLUDED.pronunciation_ipa,difficulty_band=EXCLUDED.difficulty_band,is_canonical=TRUE
+           WHERE vocabulary_words.is_canonical=FALSE RETURNING id`,
         [candidate.word, candidate.normalized_word, candidate.pronunciation_ipa, candidate.difficulty_band],
       );
       const wordId = Number(wordResult.rows[0].id);
@@ -459,6 +462,7 @@ async function main() {
   const client = await pool.connect();
   let run: BuildRun;
   try {
+    await initializePersonalVocabularyDatabase(client);
     await ensureBuildTables(client);
     run = await getOrCreateRun(client);
   } finally {

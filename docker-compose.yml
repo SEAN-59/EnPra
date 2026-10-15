@@ -6,11 +6,31 @@ services:
     environment:
       ENPRA_DATA_DIR: /data
       ENPRA_CORS_ORIGIN: ${ENPRA_CORS_ORIGIN:-http://localhost:3000}
-      ENPRA_SESSION_SECRET: ${ENPRA_SESSION_SECRET:?Set ENPRA_SESSION_SECRET in .env}
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL for the db service in .env}
+      ENPRA_BRIDGE_SERVICE_TOKEN: ${ENPRA_BRIDGE_SERVICE_TOKEN:?Set a separate long service token in .env}
       NODE_ENV: production
     volumes:
       - enpra_data:/data
     restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-enpra}
+      POSTGRES_USER: ${POSTGRES_USER:-enpra}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - enpra_db_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 volumes:
   enpra_data:
+  enpra_db_data:

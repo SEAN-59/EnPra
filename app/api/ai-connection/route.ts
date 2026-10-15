@@ -31,7 +31,7 @@ async function forwardToBridge(path: string, method: 'GET' | 'POST', user: NonNu
         'X-EnPra-User-Name': encodeURIComponent(user.displayName),
       },
     });
-    const body = await response.text();
+    const body = [204, 205, 304].includes(response.status) ? null : await response.text();
 
     return new Response(body, {
       status: response.status,

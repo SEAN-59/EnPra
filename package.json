@@ -1,14 +1,17 @@
 {
   "name": "sites-project",
-  "version": "0.2.109",
+  "version": "0.2.110",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
   },
   "scripts": {
+    "test": "npm --prefix bridge test && node --test test/*.test.mjs",
     "dev": "vinext dev",
     "build": "vinext build",
     "start": "wrangler dev --config dist/server/wrangler.json",
+    "test:writing": "npm --prefix bridge test && node --test test/writing-frontend.test.mjs",
+    "test:voca": "npm --prefix bridge test && node --test test/voca-frontend.test.mjs",
     "lint": "oxlint",
     "format": "oxfmt"
   },

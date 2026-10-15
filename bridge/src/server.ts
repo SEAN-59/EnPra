@@ -1,14 +1,18 @@
 import { serve } from '@hono/node-server';
-import { createHash, timingSafeEqual } from 'node:crypto';
+import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import { HTTPException } from 'hono/http-exception';
 import { Pool, type QueryResult } from 'pg';
 
 import { CodexRegistry } from './codex.js';
+import { describeAiFailure } from './ai-errors.js';
 import { UI_COPY_ENTRIES, UI_COPY_SCREENS } from './ui-copy-catalog.js';
 import { initializeWritingDatabase, registerWritingRoutes } from './writing.js';
+import { initializeVocabularyLearningDatabase, registerVocabularyLearningRoutes, saveVocabularyWordStatus } from './vocabulary-learning.js';
+import { initializePersonalVocabularyDatabase, savePersonalVocabulary, personalVocabularyDetails, effectiveVocabularyDetails } from './personal-vocabulary.js';
 
 type UserContext = { id: string; displayName: string };
 type Variables = { user: UserContext };
@@ -391,8 +395,10 @@ async function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS ui_copy_publication_items_screen_idx
       ON ui_copy_publication_items (publication_id, screen_key, locale, variable_name);
   `);
+  await initializePersonalVocabularyDatabase(pool);
   await syncUiCopyCatalog(pool);
   await initializeWritingDatabase(pool);
+  await initializeVocabularyLearningDatabase(pool);
 }
 
 async function syncUiCopyCatalog(database: Pool) {
@@ -675,6 +681,14 @@ function decodeDisplayName(value: string) {
 
 const app = new Hono<{ Variables: Variables }>();
 
+app.onError((error, c) => {
+  if (error instanceof HTTPException) return error.getResponse();
+  const diagnosticId = randomUUID();
+  const failure = describeAiFailure(error);
+  console.error('EnPra request failed', { diagnosticId, method: c.req.method, route: c.req.routePath, ...failure.metadata });
+  return c.json({ error: failure.message, diagnosticId }, failure.status);
+});
+
 app.use('*', cors({
   origin: (origin) => (!origin || corsOrigins.includes(origin) ? origin ?? corsOrigins[0] : null),
   allowHeaders: ['Authorization', 'Content-Type', 'X-EnPra-Service-Token', 'X-EnPra-User-Id', 'X-EnPra-User-Name'],
@@ -716,6 +730,7 @@ app.use('/api/*', async (c, next) => {
 });
 
 registerWritingRoutes(app, pool, codex);
+registerVocabularyLearningRoutes(app, pool);
 
 app.get('/api/me', async (c) => {
   const user = c.get('user');
@@ -803,6 +818,7 @@ app.post('/api/admin/copy', async (c) => {
   } catch {
     return c.json({ error: '문구 관리 요청 형식이 올바르지 않습니다.' }, 400);
   }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return c.json({ error: '문구 관리 요청 형식이 올바르지 않습니다.' }, 400);
   const action = typeof body.action === 'string' ? body.action : '';
 
   if (action === 'create-screen') {
@@ -1034,6 +1050,7 @@ app.post('/api/vocabulary/lists/manual-entries', async (c) => {
   } catch {
     return c.json({ error: '단어 입력 형식이 올바르지 않습니다.' }, 400);
   }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return c.json({ error: '단어 입력 형식이 올바르지 않습니다.' }, 400);
 
   const requestedListId = typeof body.listId === 'number' && Number.isSafeInteger(body.listId) && body.listId > 0 ? body.listId : null;
   const listTitle = typeof body.listTitle === 'string' ? body.listTitle.trim() : '';
@@ -1100,36 +1117,7 @@ app.post('/api/vocabulary/lists/manual-entries', async (c) => {
     let itemSort = nextItemSort.rows[0].next_sort;
     let addedCount = 0;
     for (const entry of words) {
-      const normalizedWord = entry.word.normalize('NFKC').toLocaleLowerCase('en-US');
-      const wordResult = await client.query<{ id: string | number }>(
-        `INSERT INTO vocabulary_words (word, normalized_word, pronunciation_ipa)
-         VALUES ($1, $2, $3)
-         ON CONFLICT (normalized_word) DO UPDATE SET updated_at = NOW()
-         RETURNING id`,
-        [entry.word, normalizedWord, entry.pronunciationIpa],
-      );
-      const wordId = Number(wordResult.rows[0].id);
-      const currentSort = await client.query<{ next_sort: number }>(
-        `SELECT COALESCE(MAX(sort_order) + 1, 0)::INTEGER AS next_sort
-         FROM vocabulary_senses WHERE word_id = $1`,
-        [wordId],
-      );
-      let senseSort = currentSort.rows[0].next_sort;
-      for (const sense of entry.senses) {
-        const existingSense = await client.query(
-          `SELECT 1 FROM vocabulary_senses
-           WHERE word_id = $1 AND part_of_speech = $2 AND meaning_ko = $3`,
-          [wordId, sense.partOfSpeech, sense.text],
-        );
-        if (!existingSense.rowCount) {
-          await client.query(
-            `INSERT INTO vocabulary_senses (word_id, part_of_speech, meaning_ko, sort_order)
-             VALUES ($1, $2, $3, $4)`,
-            [wordId, sense.partOfSpeech, sense.text, senseSort],
-          );
-          senseSort += 1;
-        }
-      }
+      const wordId = await savePersonalVocabulary(client, user.id, entry);
       const inserted = await client.query(
         `INSERT INTO vocabulary_list_items (list_id, word_id, sort_order)
          VALUES ($1, $2, $3) ON CONFLICT (list_id, word_id) DO NOTHING`,
@@ -1159,10 +1147,10 @@ app.post('/api/vocabulary/words', async (c) => {
   } catch {
     return c.json({ error: '단어 입력 형식이 올바르지 않습니다.' }, 400);
   }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return c.json({ error: '단어 입력 형식이 올바르지 않습니다.' }, 400);
 
   const word = typeof body.word === 'string' ? body.word.trim() : '';
   const pronunciationIpa = typeof body.pronunciationIpa === 'string' ? body.pronunciationIpa.trim() : '';
-  const normalizedWord = word.normalize('NFKC').toLocaleLowerCase('en-US');
   const allowedPartsOfSpeech = new Set(['n', 'v', 'a', 'ad', 'prep', 'phrase', 'conj']);
   const senses = Array.isArray(body.senses)
     ? body.senses.flatMap((sense) => {
@@ -1182,36 +1170,7 @@ app.post('/api/vocabulary/words', async (c) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const wordResult = await client.query<{ id: string | number }>(
-      `INSERT INTO vocabulary_words (word, normalized_word, pronunciation_ipa)
-       VALUES ($1, $2, $3)
-       ON CONFLICT (normalized_word) DO UPDATE SET updated_at = NOW()
-       RETURNING id`,
-      [word, normalizedWord, pronunciationIpa],
-    );
-    const wordId = Number(wordResult.rows[0].id);
-
-    const currentSort = await client.query<{ next_sort: number }>(
-      `SELECT COALESCE(MAX(sort_order) + 1, 0)::INTEGER AS next_sort
-       FROM vocabulary_senses WHERE word_id = $1`,
-      [wordId],
-    );
-    let sortOrder = currentSort.rows[0].next_sort;
-    for (const sense of senses) {
-      const existing = await client.query(
-        `SELECT 1 FROM vocabulary_senses
-         WHERE word_id = $1 AND part_of_speech = $2 AND meaning_ko = $3`,
-        [wordId, sense.partOfSpeech, sense.text],
-      );
-      if (!existing.rowCount) {
-        await client.query(
-          `INSERT INTO vocabulary_senses (word_id, part_of_speech, meaning_ko, sort_order)
-           VALUES ($1, $2, $3, $4)`,
-          [wordId, sense.partOfSpeech, sense.text, sortOrder],
-        );
-        sortOrder += 1;
-      }
-    }
+    const wordId = await savePersonalVocabulary(client, user.id, {word, pronunciationIpa, senses});
 
     const defaultListTitle = '직접 추가한 단어';
     let list = await client.query<{ id: string | number }>(
@@ -1261,6 +1220,7 @@ app.post('/api/vocabulary/words/:wordId/status', async (c) => {
     return c.json({ error: '단어 상태 요청 형식이 올바르지 않습니다.' }, 400);
   }
 
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return c.json({ error: '단어 상태 요청 형식이 올바르지 않습니다.' }, 400);
   const hasLearningStatus = Object.prototype.hasOwnProperty.call(body, 'learningStatus');
   const hasImportant = Object.prototype.hasOwnProperty.call(body, 'isImportant');
   const learningStatus = body.learningStatus === null || body.learningStatus === 'needed' || body.learningStatus === 'completed' ? body.learningStatus : undefined;
@@ -1271,35 +1231,11 @@ app.post('/api/vocabulary/words/:wordId/status', async (c) => {
   const word = await pool.query('SELECT 1 FROM vocabulary_words WHERE id = $1', [wordId]);
   if (!word.rowCount) return c.json({ error: '존재하지 않는 단어입니다.' }, 404);
 
-  const current = await pool.query<{ learning_status: 'needed' | 'completed' | null; is_important: boolean }>(
-    `SELECT learning_status, is_important
-     FROM user_vocabulary_word_status
-     WHERE user_id = $1 AND word_id = $2`,
-    [user.id, wordId],
-  );
-  const nextLearningStatus = hasLearningStatus ? learningStatus as 'needed' | 'completed' | null : current.rows[0]?.learning_status ?? null;
-  const nextImportant = hasImportant ? body.isImportant as boolean : current.rows[0]?.is_important ?? false;
-
-  if (nextLearningStatus === null && !nextImportant) {
-    await pool.query('DELETE FROM user_vocabulary_word_status WHERE user_id = $1 AND word_id = $2', [user.id, wordId]);
-  } else {
-    await pool.query(
-      `INSERT INTO user_vocabulary_word_status (user_id, word_id, learning_status, is_important, learning_status_updated_at)
-       VALUES ($1, $2, $3, $4, CASE WHEN $3 IS NULL THEN NULL ELSE NOW() END)
-       ON CONFLICT (user_id, word_id) DO UPDATE
-       SET learning_status = EXCLUDED.learning_status,
-           is_important = EXCLUDED.is_important,
-           learning_status_updated_at = CASE
-             WHEN user_vocabulary_word_status.learning_status IS DISTINCT FROM EXCLUDED.learning_status
-             THEN CASE WHEN EXCLUDED.learning_status IS NULL THEN NULL ELSE NOW() END
-             ELSE user_vocabulary_word_status.learning_status_updated_at
-           END,
-           updated_at = NOW()`,
-      [user.id, wordId, nextLearningStatus, nextImportant],
-    );
-  }
-
-  return c.json({ wordId, learningStatus: nextLearningStatus, isImportant: nextImportant });
+  const saved = await saveVocabularyWordStatus(pool, user.id, wordId, {
+    ...(hasLearningStatus ? { learningStatus: learningStatus as 'needed' | 'completed' | null } : {}),
+    ...(hasImportant ? { isImportant: body.isImportant as boolean } : {}),
+  });
+  return c.json({ wordId, ...saved });
 });
 
 app.get('/api/vocabulary/lists/:listId', async (c) => {
@@ -1336,15 +1272,14 @@ app.get('/api/vocabulary/lists/:listId', async (c) => {
     sensesByWord.set(wordId, current);
   }
 
+  const personal = await personalVocabularyDetails(pool, user.id, list.scope, words.rows.map(row=>Number(row.id)));
   return c.json({
     list: serializeVocabularyList(list),
     words: words.rows.map((word) => ({
       id: Number(word.id),
-      word: word.word,
-      pronunciationIpa: word.pronunciation_ipa,
+      ...effectiveVocabularyDetails({word:word.word,pronunciationIpa:word.pronunciation_ipa,meanings:sensesByWord.get(Number(word.id)) ?? []}, personal.get(Number(word.id))),
       learningStatus: word.learning_status,
       isImportant: word.is_important,
-      meanings: sensesByWord.get(Number(word.id)) ?? [],
     })),
   });
 });
@@ -1357,7 +1292,10 @@ app.post('/api/connections/codex/start', async (c) => {
     return c.json(await codex.get(user.id).startDeviceLogin());
   } catch (error) {
     await markConnection(user.id, 'error');
-    return c.json({ error: error instanceof Error ? error.message : 'Codex 로그인 시작에 실패했습니다.' }, 502);
+    const diagnosticId = randomUUID();
+    const failure = describeAiFailure(error);
+    console.error('EnPra AI connection failed', { diagnosticId, ...failure.metadata });
+    return c.json({ error: failure.message, diagnosticId }, failure.status);
   }
 });
 
@@ -1383,8 +1321,12 @@ app.get('/api/connections/codex', async (c) => {
       );
       return c.json({ connection: refreshed.rows[0] });
     }
-  } catch {
-    // A device login can remain pending until the user completes it in ChatGPT.
+    if (current.rows[0].status === 'active') {
+      await markConnection(user.id, 'disconnected');
+      return c.json({ connection: {...current.rows[0], status:'disconnected'} });
+    }
+  } catch (error) {
+    if (current.rows[0].status !== 'pending') throw error;
   }
 
   return c.json({ connection: current.rows[0] });
@@ -1398,6 +1340,7 @@ app.post('/api/ai/respond', async (c) => {
   } catch {
     return c.json({ error: 'AI 요청 본문이 올바르지 않습니다.' }, 400);
   }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return c.json({ error: 'AI 요청 본문이 올바르지 않습니다.' }, 400);
 
   const input = typeof body.input === 'string' ? body.input.trim() : '';
   const context = typeof body.context === 'string' ? body.context.trim() : undefined;
@@ -1416,19 +1359,18 @@ app.post('/api/ai/respond', async (c) => {
     const result = await codex.get(user.id).runLearningPrompt(learningPrompt(input, context));
     return c.json(result);
   } catch (error) {
-    console.error('EnPra AI request failed', {
-      userId: user.id,
-      message: error instanceof Error ? error.message : String(error),
-    });
+    const diagnosticId = randomUUID();
+    const failure = describeAiFailure(error);
+    console.error('EnPra AI request failed', { diagnosticId, ...failure.metadata });
     await markConnection(user.id, 'error');
-    return c.json({ error: error instanceof Error ? error.message : 'AI 학습 요청에 실패했습니다.' }, 502);
+    return c.json({ error: failure.message, diagnosticId }, failure.status);
   }
 });
 
 app.post('/api/connections/codex/disconnect', async (c) => {
   const user = c.get('user');
   try {
-    await codex.get(user.id).logout();
+    await codex.disconnect(user.id);
   } catch {
     // Missing local credentials are already effectively disconnected.
   }
@@ -1440,6 +1382,6 @@ initializeDatabase()
   .then(() => serve({ fetch: app.fetch, port, hostname: '0.0.0.0' }))
   .then(() => console.log(`EnPra bridge listening on ${port}`))
   .catch((error) => {
-    console.error('EnPra bridge failed to initialize.', error);
+    console.error('EnPra bridge failed to initialize.', describeAiFailure(error).metadata);
     process.exit(1);
   });

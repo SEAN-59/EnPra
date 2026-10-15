@@ -42,7 +42,11 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   let body: Record<string, unknown>;
-  try { body = await request.json() as Record<string, unknown>; } catch { return Response.json({ error: '요청 형식이 올바르지 않습니다.' }, { status: 400 }); }
+  try {
+    const value: unknown = await request.json();
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error();
+    body = value as Record<string, unknown>;
+  } catch { return Response.json({ error: '요청 형식이 올바르지 않습니다.' }, { status: 400 }); }
   const action = typeof body.action === 'string' ? body.action : '';
   const payload = JSON.stringify(Object.fromEntries(Object.entries(body).filter(([key]) => key !== 'action')));
   if (action === 'placement') return forward('/api/writing/placement', 'POST', request, payload);

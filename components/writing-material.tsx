@@ -28,6 +28,7 @@ type MaterialRow = {
 const palette = ['#d76a47', '#38634f', '#cf9c42', '#577c91', '#9d6275'];
 
 function numeric(value: unknown) {
+  if (value === null || value === undefined || (typeof value === 'string' && !value.trim())) return null;
   const parsed = Number(String(value ?? '').replace(/[^0-9.-]/g, ''));
   return Number.isFinite(parsed) ? parsed : null;
 }
@@ -95,7 +96,7 @@ function ChartFrame({
           {children}
         </ResponsiveContainer>
       </div>
-      {unit && (
+      {Boolean(unit) && (
         <p className="mt-2 text-right text-xs text-[#8a756b]">
           <span className="inline-flex rounded-full bg-[#f2ede4] px-2.5 py-1">
             단위: {String(unit)}
@@ -106,7 +107,7 @@ function ChartFrame({
   );
 }
 
-function DataTable({ rows }: { rows: MaterialRow[] }) {
+function DataTable({ rows, unit }: { rows: MaterialRow[]; unit?: unknown }) {
   if (!rows.length) return null;
   const columns = Array.from(
     new Set(
@@ -116,6 +117,11 @@ function DataTable({ rows }: { rows: MaterialRow[] }) {
   return (
     <div className="mt-5 overflow-x-auto rounded-2xl border border-[#ece5da]">
       <table className="min-w-full border-collapse text-left text-sm">
+        {Boolean(unit) && (
+          <caption className="caption-bottom px-4 py-3 text-right text-xs text-[#8a756b]">
+            단위: {String(unit)}
+          </caption>
+        )}
         <thead className="bg-[#f6f1e8]">
           <tr>
             <th className="px-4 py-3 font-bold text-[#344149]">항목</th>
@@ -212,28 +218,59 @@ function MapFeature({
   markerId: string;
 }) {
   const type = label(feature.type, 'area');
-  const x = clamped(feature.x, 8 + (index % 4) * 21, 92);
-  const y = clamped(feature.y, 10 + Math.floor(index / 4) * 21, 88);
-  const width = Math.min(38, Math.max(8, numeric(feature.width) ?? 18));
-  const height = Math.min(26, Math.max(6, numeric(feature.height) ?? 12));
+  const width = clamped(feature.width, 18, 100) || 18;
+  const height = clamped(feature.height, 12, 100) || 12;
+  const x = clamped(
+    feature.x,
+    8 + (index % 4) * 21,
+    type === 'label' ? 100 : 100 - width,
+  );
+  const y = clamped(
+    feature.y,
+    10 + Math.floor(index / 4) * 21,
+    type === 'label' ? 100 : 100 - height,
+  );
   const color = label(feature.color, palette[index % palette.length]);
   const name = label(feature.label ?? feature.text, '');
   const points = pointList(feature.points);
-  const pointString = points.map((point) => `${point.x},${point.y}`).join(' ');
   const isBridge = type === 'bridge' || /\bbridge\b/i.test(name);
   if (type === 'road' || type === 'river' || type === 'path') {
+    const linePoints = points.length >= 2
+      ? points
+      : [{ x, y }, { x: x + width, y: y + height }];
+    const middle = (linePoints.length - 1) / 2;
+    const start = linePoints[Math.floor(middle)];
+    const end = linePoints[Math.ceil(middle)];
+    const labelX = (start.x + end.x) / 2;
     return (
-      <polyline
-        points={pointString || `${x},${y} ${x + width},${y + height}`}
-        fill="none"
-        stroke={
-          type === 'river' ? '#3c8daa' : type === 'path' ? color : '#62736f'
-        }
-        strokeWidth={type === 'road' ? 2.35 : 2.6}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeDasharray={type === 'path' ? '3 2' : undefined}
-      />
+      <g>
+        <polyline
+          points={linePoints.map((point) => `${point.x},${point.y}`).join(' ')}
+          fill="none"
+          stroke={
+            type === 'river' ? '#3c8daa' : type === 'path' ? color : '#62736f'
+          }
+          strokeWidth={type === 'road' ? 2.35 : 2.6}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeDasharray={type === 'path' ? '3 2' : undefined}
+        />
+        {name && (
+          <text
+            x={labelX}
+            y={Math.max(4, (start.y + end.y) / 2 - 4)}
+            textAnchor={labelX < 20 ? 'start' : labelX > 80 ? 'end' : 'middle'}
+            fontSize="4"
+            fontWeight="700"
+            fill="#344149"
+            stroke="#eaf0eb"
+            strokeWidth="2"
+            paintOrder="stroke"
+          >
+            {name}
+          </text>
+        )}
+      </g>
     );
   }
   if (isBridge) {
@@ -532,6 +569,10 @@ export function WritingMaterial({
   const series = seriesData(material);
   const mapPanels = mapPanelsFrom(material);
   const steps = stepsFrom(material);
+  const source = label(material.content, '');
+  const questions = records(material.questions)
+    .map((question) => label(question.prompt, ''))
+    .filter(Boolean);
   const resolvedFormat =
     format ??
     (mapPanels.length
@@ -551,6 +592,17 @@ export function WritingMaterial({
     diagram: 'Process diagram',
   };
   const content = (() => {
+    if (source || questions.length)
+      return (
+        <div className="mt-5 space-y-4 text-sm leading-7 text-[#314047]">
+          {source && <p className="whitespace-pre-wrap">{source}</p>}
+          {questions.length > 0 && (
+            <ol className="list-inside list-decimal space-y-2">
+              {questions.map((question, index) => <li key={index}>{question}</li>)}
+            </ol>
+          )}
+        </div>
+      );
     if (resolvedFormat === 'bar_chart' && series)
       return (
         <ChartFrame unit={material.unit}>
@@ -623,15 +675,15 @@ export function WritingMaterial({
       return mapPanels.length ? (
         <MapPanels panels={mapPanels} />
       ) : (
-        <DataTable rows={rows} />
+        <DataTable rows={rows} unit={material.unit} />
       );
     if (resolvedFormat === 'diagram')
       return steps.length ? (
         <ProcessDiagram steps={steps} />
       ) : (
-        <DataTable rows={rows} />
+        <DataTable rows={rows} unit={material.unit} />
       );
-    return <DataTable rows={rows} />;
+    return <DataTable rows={rows} unit={material.unit} />;
   })();
   return (
     <section className="mt-5 rounded-3xl border border-[#dcd6ca] bg-[#fffdf8] p-5 shadow-[0_12px_32px_rgba(35,44,43,0.04)]">
@@ -643,10 +695,10 @@ export function WritingMaterial({
           <h3 className="mt-1 font-serif text-2xl text-[#24333a]">{title}</h3>
         </div>
         <span className="rounded-full bg-[#eef5f0] px-3 py-1 text-xs font-bold text-[#38634f]">
-          {formatLabel[resolvedFormat] ?? 'Data'}
+          {formatLabel[resolvedFormat] ?? (source || questions.length ? 'Short source' : 'Data')}
         </span>
       </div>
-      {material.description && (
+      {Boolean(material.description) && (
         <p className="mt-3 text-sm leading-6 text-[#69736e]">
           {String(material.description)}
         </p>

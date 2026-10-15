@@ -34,7 +34,7 @@ function normalized(value: string) {
 }
 
 export function StaticCopyProvider({ children }: { children: React.ReactNode }) {
-  const [document, setDocument] = useState<CopyDocument>({});
+  const [copyDocument, setDocument] = useState<CopyDocument>({});
 
   useEffect(() => {
     let active = true;
@@ -46,10 +46,10 @@ export function StaticCopyProvider({ children }: { children: React.ReactNode }) 
   }, []);
 
   useEffect(() => {
-    if (!document.screens || typeof window === 'undefined' || !document.body) return;
+    if (!copyDocument.screens || typeof window === 'undefined' || !document.body) return;
     const replacements = new Map<string, string>();
     for (const screenKey of screenKeysForPath(window.location.pathname)) {
-      for (const value of Object.values(document.screens[screenKey] ?? {})) {
+      for (const value of Object.values(copyDocument.screens[screenKey] ?? {})) {
         const sourceText = typeof value.sourceText === 'string' ? normalized(value.sourceText) : '';
         const text = typeof value.text === 'string' ? value.text.trim() : '';
         if (sourceText && text && sourceText !== text) replacements.set(sourceText, text);
@@ -83,9 +83,9 @@ export function StaticCopyProvider({ children }: { children: React.ReactNode }) 
     });
     observer.observe(document.body, { childList: true, characterData: true, subtree: true });
     return () => observer.disconnect();
-  }, [document]);
+  }, [copyDocument]);
 
-  return <StaticCopyContext.Provider value={document}>{children}</StaticCopyContext.Provider>;
+  return <StaticCopyContext.Provider value={copyDocument}>{children}</StaticCopyContext.Provider>;
 }
 
 export function useStaticCopy(screenKey: string, variableName: string, fallback: string) {

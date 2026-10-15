@@ -12,6 +12,7 @@ import {
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "@/components/ui/toast";
 import { useDocumentScrollLock } from "@/components/use-document-scroll-lock";
+import { vocaRequest } from "@/lib/voca-learning";
 
 type VocabularyList = {
   id: number;
@@ -191,21 +192,25 @@ export function VocaListBoard() {
   const [listMenuId, setListMenuId] = useState<number | null>(null);
   const [removingListId, setRemovingListId] = useState<number | null>(null);
   const [statusWordId, setStatusWordId] = useState<number | null>(null);
+  const detailRequest = useRef(0);
   useDocumentScrollLock(listMenuId !== null);
 
   async function selectList(list: VocabularyList) {
+    const request = ++detailRequest.current;
     setDetailLoading(true);
     try {
       const response = await fetch(`/api/vocabulary/list/${list.id}`, {
         cache: "no-store",
       });
       const result = await readResponse<DetailResponse>(response);
+      if (request !== detailRequest.current) return;
       if (!response.ok || !result.list)
         throw new Error(result.error ?? "단어 목록을 불러오지 못했습니다.");
       setSelected(result.list);
       setWords(result.words ?? []);
       window.history.replaceState(null, "", `/voca/list?list=${list.id}`);
     } catch (error) {
+      if (request !== detailRequest.current) return;
       toast.add({
         title: "단어 목록을 불러오지 못했어요.",
         description:
@@ -216,13 +221,13 @@ export function VocaListBoard() {
         priority: "high",
       });
     } finally {
-      setDetailLoading(false);
+      if (request === detailRequest.current) setDetailLoading(false);
     }
   }
 
   async function removeList(list: VocabularyList) {
     const action = list.scope === "common" ? "내 목록에서 제거" : "목록 지우기";
-    if (!window.confirm(`‘${list.title}’을 ${action}할까요?`)) return;
+    if (!window.confirm(`‘${list.title}’을 ${action}할까요?${list.scope === 'personal' ? ' 이 목록의 카드 학습·테스트 기록도 함께 삭제돼요.' : ' 공통 목록의 원본은 유지돼요.'}`)) return;
     setRemovingListId(list.id);
     try {
       const response = await fetch(`/api/vocabulary/list/${list.id}`, {
@@ -295,6 +300,14 @@ export function VocaListBoard() {
     }
   }
 
+  async function resetLearning(list: VocabularyList) {
+    if (!window.confirm(`‘${list.title}’의 카드 학습 기록과 알아요·아직 몰라요 표시를 초기화할까요? 테스트 기록과 중요 표시는 유지돼요. 같은 단어를 포함한 다른 목록의 알아요·아직 몰라요 표시에도 반영돼요.`)) return;
+    setRemovingListId(list.id);
+    try { await vocaRequest('', { action: 'reset', listId: list.id }); setListMenuId(null); toast.add({ title: '이 목록의 카드 학습을 초기화했어요.', type: 'success' }); }
+    catch (error) { toast.add({ title: '초기화하지 못했어요.', description: error instanceof Error ? error.message : '다시 시도해 주세요.', type: 'error' }); }
+    finally { setRemovingListId(null); }
+  }
+
   useEffect(() => {
     let active = true;
     fetch("/api/vocabulary", { cache: "no-store" })
@@ -328,6 +341,7 @@ export function VocaListBoard() {
       });
     return () => {
       active = false;
+      detailRequest.current++;
     };
   }, []);
 
@@ -367,6 +381,8 @@ export function VocaListBoard() {
             <button
               type="button"
               onClick={() => {
+                detailRequest.current++;
+                setDetailLoading(false);
                 setSelected(null);
                 setWords([]);
                 window.history.replaceState(null, "", "/voca/list");
@@ -390,18 +406,10 @@ export function VocaListBoard() {
               </h2>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() =>
-              toast.add({
-                title: "이 목록으로 학습을 시작할 준비 중입니다.",
-                type: "info",
-              })
-            }
-            className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-[#1d2935] px-3 text-xs font-semibold text-[#fffdf8] transition-transform hover:bg-[#344451] active:scale-95"
-          >
-            학습하기 <ArrowRight className="size-3.5" aria-hidden="true" />
-          </button>
+          <div className="flex flex-wrap gap-4">
+            <a href={`/voca/practice?list=${selected.id}`} className="inline-flex min-h-12 items-center gap-2 rounded-xl bg-[#203b35] px-4 text-sm font-semibold text-white">학습하기 <ArrowRight className="size-4" aria-hidden="true" /></a>
+            <a href={`/voca/test?list=${selected.id}`} className="inline-flex min-h-12 items-center rounded-xl border border-[#dcd6ca] px-4 text-sm font-semibold text-[#203b35]">테스트</a>
+          </div>
         </div>
         {detailLoading ? (
           <p className="rounded-3xl border border-[#ded7ca] bg-[#fffdf8] px-5 py-12 text-center text-sm text-[#77807a]">
@@ -523,13 +531,8 @@ export function VocaListBoard() {
                     <div className="absolute right-0 top-[calc(100%+0.35rem)] z-20 w-44 overflow-hidden rounded-xl border border-[#dcd6ca] bg-[#fffdf8] p-1.5 shadow-[0_14px_30px_rgba(29,41,53,0.14)]">
                       <button
                         type="button"
-                        onClick={() => {
-                          setListMenuId(null);
-                          toast.add({
-                            title: "학습현황 초기화는 준비 중입니다.",
-                            type: "info",
-                          });
-                        }}
+                        disabled={removingListId === list.id}
+                        onClick={() => void resetLearning(list)}
                         className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-[#4e5a55] hover:bg-[#f1ede5]"
                       >
                         <RotateCcw className="size-3.5" aria-hidden="true" />
