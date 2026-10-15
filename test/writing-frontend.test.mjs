@@ -26,9 +26,9 @@ const stages = [
   '7.0B',
 ];
 
-function load(relativePath, dependencies, globals = {}) {
+function load(relativePath, dependencies, globals = {}, extraSource = '') {
   const path = new URL(relativePath, import.meta.url);
-  const { outputText } = ts.transpileModule(readFileSync(path, 'utf8'), {
+  const { outputText } = ts.transpileModule(readFileSync(path, 'utf8') + extraSource, {
     compilerOptions: {
       module: ts.ModuleKind.CommonJS,
       jsx: ts.JsxEmit.ReactJSX,
@@ -69,7 +69,7 @@ const { WritingMaterial } = load('../components/writing-material.tsx', {
 });
 const { WritingSubnav } = load('../components/writing-subnav.tsx', {});
 
-function client(initialState = [], respond = async () => ({ data: {} })) {
+function client(initialState = [], respond = async () => ({ data: {} }), globals = {}) {
   const state = initialState.slice();
   const refs = new Map();
   const dependencies = new Map();
@@ -128,6 +128,7 @@ function client(initialState = [], respond = async () => ({ data: {} })) {
       'lucide-react': new Proxy({}, { get: () => Icon }),
     },
     {
+      ...globals,
       window: {setInterval(fn) {const id=timers.size+1;timers.set(id,fn);return id;},clearInterval(id){timers.delete(id);}},
       fetch: async (url, options) => {
         const request = {
@@ -139,6 +140,7 @@ function client(initialState = [], respond = async () => ({ data: {} })) {
         return { ok: result.ok ?? true, json: async () => result.data };
       },
     },
+    '\nexport { HintMenu };',
   );
   return {
     requests,
@@ -160,8 +162,9 @@ function client(initialState = [], respond = async () => ({ data: {} })) {
       }
     },
     async runEffects() {
-      for (const effect of effects.splice(0)) effect();
+      const cleanups = effects.splice(0).map((effect) => effect());
       await tick();
+      return cleanups.filter((cleanup) => typeof cleanup === 'function');
     },
   };
 }
@@ -710,6 +713,62 @@ const foundationSession = {
     },
   },
 };
+
+for (const pointerType of ['mouse', 'touch', 'pen']) {
+  test(`hint dropdown closes on an outside ${pointerType} press without consuming hints`, async () => {
+    const hint = { id: 3, order: 1, type: 'grammar', revealed: true, content: 'Grammar hint' };
+    const listeners = new Map();
+    const document = {
+      addEventListener(type, listener, capture) {
+        assert.equal(capture, true, 'outside presses are observed even if another control stops bubbling');
+        listeners.set(type, listener);
+      },
+      removeEventListener(type, listener, capture) {
+        assert.equal(capture, true);
+        assert.equal(listeners.get(type), listener);
+        listeners.delete(type);
+      },
+    };
+    const harness = client([], undefined, { document });
+    let reveals = 0;
+    const props = { hints: [hint], onReveal: async () => { reveals++; return true; } };
+    const inside = {};
+    const render = () => {
+      const tree = harness.render('HintMenu', props);
+      tree.props.ref.current = { contains: target => target === inside };
+      return tree;
+    };
+    const trigger = tree => find(tree, node => node.props?.['aria-label'] === '힌트 열기');
+    let tree = render();
+    await harness.runEffects();
+    assert.equal(listeners.size, 0, 'closed menus do not keep document listeners');
+    trigger(tree).props.onClick();
+    tree = render();
+    const cleanups = await harness.runEffects();
+    assert.equal(trigger(tree).props['aria-expanded'], true);
+    assert.equal(listeners.size, 1);
+    listeners.get('pointerdown')({ target: inside, pointerType });
+    assert.equal(trigger(render()).props['aria-expanded'], true, 'presses inside the menu do not dismiss it');
+    listeners.get('pointerdown')({ target: {}, pointerType });
+    assert.equal(trigger(render()).props['aria-expanded'], false);
+    assert.equal(reveals, 0, 'outside dismissal does not reveal or charge for a hint');
+    cleanups.forEach(cleanup => cleanup());
+    await harness.runEffects();
+    assert.equal(listeners.size, 0, 'closing or unmounting cleans up the listener');
+    trigger(render()).props.onClick();
+    tree = render();
+    const reopenedCleanups = await harness.runEffects();
+    assert.equal(trigger(tree).props['aria-expanded'], true, 'the trigger can reopen the menu');
+    await button(tree, 'HINT 1 · Grammar').props.onClick();
+    tree = render();
+    assert.equal(trigger(tree).props['aria-expanded'], false);
+    assert.equal(reveals, 1, 'selecting a hint still reveals it exactly once');
+    assert.ok(find(tree, node => node.props?.title === 'HINT 1 · Grammar').props.open);
+    reopenedCleanups.forEach(cleanup => cleanup());
+    await harness.runEffects();
+    assert.equal(listeners.size, 0);
+  });
+}
 
 test('hint content is revealed only after a successful durable usage response, and failure is retryable', async () => {
   const initial={...foundationSession,hints:[{id:3,order:1,type:'grammar',revealed:false}]};

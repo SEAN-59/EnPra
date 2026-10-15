@@ -222,6 +222,18 @@ function HintMenu({
 }) {
   const [open, setOpen] = useState(false);
   const [selectedHintId, setSelectedHintId] = useState<number | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node))
+        setOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOutside, true);
+    return () => document.removeEventListener('pointerdown', closeOutside, true);
+  }, [open]);
+
   if (!hints.length && !structureGuide?.available) return null;
   const labels: Record<string, string> = {
     structure: 'Structure',
@@ -231,7 +243,7 @@ function HintMenu({
   };
   const selectedHint = hints.find((hint) => hint.id === selectedHintId);
   return (
-    <div className="relative z-20 ml-auto w-fit">
+    <div ref={menuRef} className="relative z-20 ml-auto w-fit">
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
