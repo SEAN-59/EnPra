@@ -714,6 +714,61 @@ const foundationSession = {
   },
 };
 
+for (const mode of ['task1', 'paragraphs', 'foundation']) {
+  test(`immediate ${mode} feedback shows the exact submitted original before corrections`, async () => {
+    const initial = mode === 'foundation' ? foundationSession : {
+      ...foundationSession,
+      currentItem: { ...foundationSession.currentItem, taskType: mode === 'paragraphs' ? 'task2' : 'task1', structureGuideUsed: mode === 'paragraphs' },
+    };
+    const harness = client(sessionState(initial, {
+      answer: '  I has a plan.\n\nIt matter to me.  ',
+      sections: [{label:'Introduction',text:' I has a plan. '},{label:'Body 1',text:'It matter to me.'}],
+      foundationAnswers: ['It close at six.', 'The library.', 'Books.'],
+    }), async ({body}) => ({data:{
+      result: feedback,
+      session: {...initial, completed:true, currentItem:null, results:[{itemId:99,answerText:'UNRELATED OLD ANSWER'}]},
+    }}));
+    await button(harness.render('WritingSessionClient',{sessionId:1}),'답안 제출').props.onClick();
+    const after = harness.render('WritingSessionClient',{sessionId:1});
+    const original = find(after,node=>node.type==='section'&&node.props?.['aria-label']==='내가 제출한 답안');
+    assert.ok(original, 'the immediate feedback must include the submitted original');
+    assert.equal(text(find(original,node=>node.type==='p')),harness.requests[0].body.answer);
+    assert.doesNotMatch(text(original),/UNRELATED OLD ANSWER/);
+    const html = harness.markup(after);
+    assert.ok(html.indexOf('내가 제출한 답안') < html.indexOf('최소 교정 답안'));
+    assert.ok(html.indexOf('최소 교정 답안') < html.indexOf('개선 답안'));
+    assert.match(html,/VISIBLE LEARNING CORRECTION/);
+  });
+}
+
+test('immediate learning feedback keeps each original paired with its own question', async () => {
+  const item = { ...foundationSession.currentItem, taskType:'task1' };
+  const first = {...foundationSession,currentItem:item};
+  const second = {...first,currentItem:{...item,id:8,order:2}};
+  const harness = client(sessionState(first,{answer:'FIRST ORIGINAL'}),async({body})=>({data:body
+    ? {result:feedback,session:{...second,completed:body.itemId===8,currentItem:body.itemId===8?null:second.currentItem}}
+    : {session:second}}));
+  const render=()=>harness.render('WritingSessionClient',{sessionId:1});
+  await button(render(),'답안 제출').props.onClick();
+  assert.match(harness.markup(render()),/FIRST ORIGINAL/);
+  find(render(),node=>node.type===Button&&text(node).trim()==='다음 문제').props.onClick();
+  await tick();
+  find(render(),node=>node.type==='textarea').props.onChange({target:{value:'SECOND ORIGINAL'}});
+  await button(render(),'답안 제출').props.onClick();
+  const html=harness.markup(render());
+  assert.match(html,/SECOND ORIGINAL/);
+  assert.doesNotMatch(html,/FIRST ORIGINAL/);
+});
+
+test('failed submission keeps the editable original instead of showing a feedback snapshot', async () => {
+  const initial={...foundationSession,currentItem:{...foundationSession.currentItem,taskType:'task1'}};
+  const harness=client(sessionState(initial,{answer:'KEEP MY ORIGINAL'}),async()=>({ok:false,data:{error:'Synthetic grading failure'}}));
+  const render=()=>harness.render('WritingSessionClient',{sessionId:1});
+  await button(render(),'답안 제출').props.onClick();
+  assert.equal(find(render(),node=>node.type==='textarea').props.value,'KEEP MY ORIGINAL');
+  assert.doesNotMatch(harness.markup(render()),/LEARNING FEEDBACK|내가 제출한 답안/);
+});
+
 for (const pointerType of ['mouse', 'touch', 'pen']) {
   test(`hint dropdown closes on an outside ${pointerType} press without consuming hints`, async () => {
     const hint = { id: 3, order: 1, type: 'grammar', revealed: true, content: 'Grammar hint' };

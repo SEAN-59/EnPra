@@ -1030,7 +1030,7 @@ export function WritingSessionClient({ sessionId }: { sessionId: number }) {
             : [],
       });
       setSession(result.session);
-      setFeedback(result.result);
+      setFeedback(result.result ? { ...result.result, answerText: submittedAnswer } : null);
       setAnswer('');
       setAnswerSections([]);
       setFoundationAnswers([]);
@@ -1150,6 +1150,14 @@ export function WritingSessionClient({ sessionId }: { sessionId: number }) {
         </p>
         <h2 className="mt-2 font-serif text-3xl">이번 답안을 살펴볼까요?</h2>
         <Performance score={feedback.effectiveScore} />
+        {typeof feedback.answerText === 'string' && feedback.answerText && (
+          <section aria-label="내가 제출한 답안" className="mt-6 rounded-2xl border border-[#ece5da] bg-[#fbf9f4] p-4">
+            <h3 className="font-bold text-[#24333a]">내가 제출한 답안</h3>
+            <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-[#344149]">
+              {feedback.answerText}
+            </p>
+          </section>
+        )}
         <Feedback data={feedback.feedback} />
         <Button
           className="mt-7"
